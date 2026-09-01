@@ -36,6 +36,8 @@ uv run dev-stats --csv stats.csv
 
 # 跳过流量采集，只拉公开数据（更快、省 API 配额）
 uv run dev-stats --no-traffic
+uv run dev-stats juejin --sort diggs --limit 10        # 掘金：查 .env 里 JUEJIN_USER_ID 的文章数据
+uv run dev-stats juejin --user-id 123456789012 --csv juejin.csv
 ```
 
 全部参数见 `uv run dev-stats --help`。

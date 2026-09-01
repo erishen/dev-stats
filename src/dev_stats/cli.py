@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sys
 from datetime import UTC, datetime, timedelta
 
@@ -12,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .api import GitHubClient, RepoStats
+from .juejin import JuejinClient, JuejinPost
 
 SORT_KEYS = ("stars", "forks", "clones", "views", "updated", "name", "size", "health", "commits")
 UNAVAILABLE = "-"
@@ -211,7 +213,10 @@ def export_csv(repos: list[RepoStats], path: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    load_dotenv()  # 从 .env 读取 GITHUB_TOKEN 等配置（若存在）
+    load_dotenv()  # 从 .env 读取 GITHUB_TOKEN / JUEJIN_USER_ID 等配置（若存在）
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "juejin":
+        return run_juejin(argv[1:])
     args = build_parser().parse_args(argv)
     console = Console()
 
@@ -308,6 +313,118 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.csv:
         export_csv(repos, args.csv)
+        console.print(f"[green]已导出 CSV：{args.csv}[/green]")
+    return 0
+
+
+# ---------- 掘金（juejin）子命令 ----------
+
+
+def build_juejin_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="dev-stats juejin",
+        description="查询掘金账号文章的阅读 / 点赞 / 评论数据（公开数据，无需登录，需 user_id）",
+    )
+    parser.add_argument(
+        "--user-id",
+        default=None,
+        help="掘金 user_id（个人主页 URL 里的数字串），缺省读 .env 的 JUEJIN_USER_ID",
+    )
+    parser.add_argument(
+        "--sort",
+        choices=("views", "diggs", "comments", "date"),
+        default="views",
+        help="排序字段（默认 views 降序）",
+    )
+    parser.add_argument("--limit", type=int, default=0, help="仅显示前 N 篇，0 表示全部")
+    parser.add_argument("--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径")
+    return parser
+
+
+JUEJIN_SORT_KEYS = ("views", "diggs", "comments", "date")
+
+
+def sort_posts(posts: list[JuejinPost], key: str) -> list[JuejinPost]:
+    if key == "date":
+        return sorted(posts, key=lambda p: p.publish_time, reverse=True)
+    attr = {
+        "views": lambda p: p.sort_key_views,
+        "diggs": lambda p: p.sort_key_diggs,
+        "comments": lambda p: p.sort_key_comments,
+    }[key]
+    return sorted(posts, key=attr, reverse=True)
+
+
+def render_juejin_table(posts: list[JuejinPost], user_id: str) -> Table:
+    table = Table(title=f"掘金账号 {user_id} 的文章数据", title_style="bold cyan")
+    table.add_column("文章", overflow="fold")
+    table.add_column("发布时间", justify="right")
+    table.add_column("阅读", justify="right")
+    table.add_column("点赞", justify="right")
+    table.add_column("评论", justify="right")
+    for p in posts:
+        table.add_row(
+            p.title or UNAVAILABLE,
+            p.publish_time or UNAVAILABLE,
+            _fmt(p.view_count),
+            _fmt(p.digg_count),
+            _fmt(p.comment_count),
+        )
+    total_views = sum(p.view_count or 0 for p in posts)
+    total_diggs = sum(p.digg_count or 0 for p in posts)
+    total_comments = sum(p.comment_count or 0 for p in posts)
+    table.caption = "  |  ".join(
+        [f"共 {len(posts)} 篇", f"总阅读 {total_views:,}", f"总点赞 {total_diggs:,}", f"总评论 {total_comments:,}"]
+    )
+    return table
+
+
+def export_juejin_csv(posts: list[JuejinPost], path: str) -> None:
+    fields = ["title", "post_id", "url", "publish_time", "view_count", "digg_count", "comment_count"]
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        for p in posts:
+            writer.writerow(
+                {
+                    "title": p.title,
+                    "post_id": p.post_id,
+                    "url": p.url,
+                    "publish_time": p.publish_time,
+                    "view_count": p.view_count,
+                    "digg_count": p.digg_count,
+                    "comment_count": p.comment_count,
+                }
+            )
+
+
+def run_juejin(argv: list[str]) -> int:
+    args = build_juejin_parser().parse_args(argv)
+    console = Console()
+    user_id = args.user_id or os.environ.get("JUEJIN_USER_ID")
+    if not user_id:
+        console.print(
+            "[red]未指定 --user-id，且 .env/JUEJIN_USER_ID 未配置。[/red] "
+            "打开你的掘金主页（juejin.cn），URL 里的数字串即 user_id，可写入 .env 的 JUEJIN_USER_ID。"
+        )
+        return 2
+
+    client = JuejinClient()
+    try:
+        posts = client.fetch_posts(user_id)
+    except Exception as exc:
+        console.print(f"[red]拉取掘金文章失败：{exc}[/red]")
+        return 1
+    if not posts:
+        console.print(f"[yellow]该掘金账号没有可查的已发布文章（user_id={user_id}）。[/yellow]")
+        return 1
+
+    posts = sort_posts(posts, args.sort)
+    if args.limit > 0:
+        posts = posts[: args.limit]
+    console.print(render_juejin_table(posts, user_id))
+    if args.csv:
+        export_juejin_csv(posts, args.csv)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
     return 0
 
