@@ -6,7 +6,7 @@ import argparse
 import csv
 import os
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -139,6 +139,28 @@ def _fmt_size(size_kb: int | None) -> str:
 
 def _fmt(value: int | None) -> str:
     return UNAVAILABLE if value is None else f"{value:,}"
+
+
+def _fmt_daily(value: float) -> str:
+    return UNAVAILABLE if value <= 0 else f"{value:.1f}"
+
+
+def _daily_views(view_count: int | None, publish_time: str, today: date | None = None) -> float:
+    """日均阅读 = 阅读量 / 距发布天数（至少 1 天）；缺发布时间或阅读时返回 0。
+
+    today 可注入固定日期，便于测试；缺省用真实今天。
+    """
+    if view_count is None or not publish_time:
+        return 0.0
+    today = today or date.today()
+    try:
+        d = datetime.strptime(publish_time, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return 0.0
+    days = (today - d).days + 1
+    if days < 1:
+        days = 1
+    return view_count / days
 
 
 def export_csv(repos: list[RepoStats], path: str) -> None:
@@ -336,9 +358,9 @@ def build_juejin_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--sort",
-        choices=("views", "diggs", "comments", "date"),
+        choices=("views", "diggs", "comments", "date", "daily"),
         default="views",
-        help="排序字段（默认 views 降序）",
+        help="排序字段（默认 views 降序；daily=日均阅读，反映传播效率）",
     )
     parser.add_argument("--limit", type=int, default=0, help="仅显示前 N 篇，0 表示全部")
     parser.add_argument("--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径")
@@ -350,12 +372,14 @@ def build_juejin_parser() -> argparse.ArgumentParser:
     return parser
 
 
-JUEJIN_SORT_KEYS = ("views", "diggs", "comments", "date")
+JUEJIN_SORT_KEYS = ("views", "diggs", "comments", "date", "daily")
 
 
-def sort_posts(posts: list[JuejinPost], key: str) -> list[JuejinPost]:
+def sort_posts(posts: list[JuejinPost], key: str, today: date | None = None) -> list[JuejinPost]:
     if key == "date":
         return sorted(posts, key=lambda p: p.publish_time, reverse=True)
+    if key == "daily":
+        return sorted(posts, key=lambda p: _daily_views(p.view_count, p.publish_time, today), reverse=True)
     attr = {
         "views": lambda p: p.sort_key_views,
         "diggs": lambda p: p.sort_key_diggs,
@@ -404,6 +428,7 @@ def render_juejin_table(posts: list[JuejinPost], user_id: str, art_repos: dict |
     table.add_column("发布时间", justify="right")
     table.add_column("关联", justify="left")
     table.add_column("阅读", justify="right")
+    table.add_column("日均", justify="right")
     table.add_column("点赞", justify="right")
     table.add_column("评论", justify="right")
     art_repos = art_repos or {}
@@ -413,6 +438,7 @@ def render_juejin_table(posts: list[JuejinPost], user_id: str, art_repos: dict |
             p.publish_time or UNAVAILABLE,
             repo_label(art_repos, p.wp_id) or UNAVAILABLE,
             _fmt(p.view_count),
+            _fmt_daily(_daily_views(p.view_count, p.publish_time)),
             _fmt(p.digg_count),
             _fmt(p.comment_count),
         )
@@ -432,6 +458,7 @@ def export_juejin_csv(posts: list[JuejinPost], path: str, art_repos: dict | None
         "url",
         "publish_time",
         "view_count",
+        "daily_views",
         "digg_count",
         "comment_count",
         "wp_id",
@@ -449,6 +476,7 @@ def export_juejin_csv(posts: list[JuejinPost], path: str, art_repos: dict | None
                     "url": p.url,
                     "publish_time": p.publish_time,
                     "view_count": p.view_count,
+                    "daily_views": f"{_daily_views(p.view_count, p.publish_time):.2f}",
                     "digg_count": p.digg_count,
                     "comment_count": p.comment_count,
                     "wp_id": p.wp_id,
@@ -519,9 +547,9 @@ def build_segmentfault_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--sort",
-        choices=("views", "diggs", "comments", "date"),
+        choices=("views", "diggs", "comments", "date", "daily"),
         default="views",
-        help="排序字段（默认 views 降序）",
+        help="排序字段（默认 views 降序；daily=日均阅读，反映传播效率）",
     )
     parser.add_argument("--limit", type=int, default=0, help="仅显示前 N 篇，0 表示全部")
     parser.add_argument("--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径")
@@ -552,9 +580,11 @@ def _scan_sf_ids(articles_dir: str) -> list[str]:
     return sorted(set(_scan_sf_wp(articles_dir)))
 
 
-def sort_sf_posts(posts, key: str):
+def sort_sf_posts(posts, key: str, today: date | None = None):
     if key == "date":
         return sorted(posts, key=lambda p: p.publish_time, reverse=True)
+    if key == "daily":
+        return sorted(posts, key=lambda p: _daily_views(p.view_count, p.publish_time, today), reverse=True)
     attr = {
         "views": lambda p: p.sort_key_views,
         "diggs": lambda p: p.sort_key_diggs,
@@ -569,6 +599,7 @@ def render_segmentfault_table(posts, source: str, art_repos: dict | None = None)
     table.add_column("发布时间", justify="right")
     table.add_column("关联", justify="left")
     table.add_column("阅读", justify="right")
+    table.add_column("日均", justify="right")
     table.add_column("访客", justify="right")
     table.add_column("点赞", justify="right")
     table.add_column("收藏", justify="right")
@@ -580,6 +611,7 @@ def render_segmentfault_table(posts, source: str, art_repos: dict | None = None)
             p.publish_time or UNAVAILABLE,
             repo_label(art_repos, p.wp_id) or UNAVAILABLE,
             _fmt(p.view_count),
+            _fmt_daily(_daily_views(p.view_count, p.publish_time)),
             _fmt(p.unique_view_count),
             _fmt(p.digg_count),
             _fmt(p.bookmark_count),
@@ -601,6 +633,7 @@ def export_segmentfault_csv(posts, path: str, art_repos: dict | None = None) -> 
         "url",
         "publish_time",
         "view_count",
+        "daily_views",
         "unique_view_count",
         "digg_count",
         "bookmark_count",
@@ -620,6 +653,7 @@ def export_segmentfault_csv(posts, path: str, art_repos: dict | None = None) -> 
                     "url": p.url,
                     "publish_time": p.publish_time,
                     "view_count": p.view_count,
+                    "daily_views": f"{_daily_views(p.view_count, p.publish_time):.2f}",
                     "unique_view_count": p.unique_view_count,
                     "digg_count": p.digg_count,
                     "bookmark_count": p.bookmark_count,

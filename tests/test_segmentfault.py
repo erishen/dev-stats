@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 
 import pytest
 from dev_stats.cli import _scan_sf_ids, render_segmentfault_table, sort_sf_posts
@@ -90,9 +91,19 @@ def test_render_segmentfault_table_columns_and_totals():
     ]
     table = render_segmentfault_table(posts, "erishen")
     headers = [c.header for c in table.columns]
-    for col in ("文章", "阅读", "访客", "点赞", "收藏", "评论"):
+    for col in ("文章", "阅读", "日均", "访客", "点赞", "收藏", "评论"):
         assert col in headers
     assert "共 1 篇" in table.caption
+
+
+def test_sort_sf_posts_by_daily_views():
+    posts = [
+        SegmentFaultPost("1", "老文", "2026-01-04", 1000, 800, 1, 0, 0, ""),
+        SegmentFaultPost("2", "新文", "2026-08-29", 135, 100, 2, 1, 1, ""),
+        SegmentFaultPost("3", "无阅读", "2026-08-29", None, None, 0, 0, 0, ""),
+    ]
+    ordered = sort_sf_posts(posts, "daily", today=date(2026, 9, 1))
+    assert [p.title for p in ordered] == ["新文", "老文", "无阅读"]
 
 
 def test_scan_sf_ids_from_frontmatter(tmp_path):
