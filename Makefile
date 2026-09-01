@@ -1,4 +1,4 @@
-.PHONY: help sync run test lint lint-fix fmt check csv clean
+.PHONY: help sync run test lint lint-fix fmt check csv juejin segmentfault clean
 
 # 默认目标：从带 ## 注释的行提取并列出所有可用命令
 help:
@@ -33,6 +33,14 @@ check: ## 提交/收尾前一把梭：lint + 格式校验 + 测试
 # stats.csv 已在 .gitignore 中（运行时数据导出，不入库）
 csv: ## 导出自己的仓库统计到 stats.csv（含 14 天 clone 流量）
 	uv run dev-stats --csv stats.csv
+
+# 内容平台查询：默认按日均阅读（传播效率）排序；可加 ARGS 覆盖，
+# 如 make juejin ARGS="--sort views --limit 5" 或 make segmentfault ARGS="--csv sf.csv"
+juejin: ## 查掘金文章阅读/点赞/评论（默认 --sort daily，可 ARGS 覆盖）
+	uv run dev-stats juejin $(if $(ARGS),$(ARGS),--sort daily)
+
+segmentfault: ## 查思否文章阅读/访客/点赞/收藏/评论（默认 --sort daily，可 ARGS 覆盖）
+	uv run dev-stats segmentfault $(if $(ARGS),$(ARGS),--sort daily)
 
 # 遵守"不永久删除"约定：缓存与构建产物一律移进废纸篓（可恢复），不用 rm -rf
 clean: ## 将测试/格式缓存与构建产物移入废纸篓
