@@ -40,7 +40,7 @@ uv run dev-stats juejin --sort diggs --limit 10
 uv run dev-stats juejin --sort daily --limit 10     # 按日均阅读排序（=阅读÷发布天数，反映传播效率）        # 掘金：查 .env 里 JUEJIN_USER_ID 的文章数据
 uv run dev-stats juejin --user-id 123456789012 --csv juejin.csv
 uv run dev-stats segmentfault --sort views --limit 10       # 思否：扫描 wordpress-tools 文章的 sf_id 查数据
-uv run dev-stats segmentfault --ids 1190000048181252 --csv sf.csv
+uv run dev-stats segmentfault --ids 1190000000000000 --csv sf.csv
 uv run dev-stats report --sort total --limit 10    # 汇总掘金 + 思否，按母文章合并对比
 # 掘金/思否表格里的“关联”列 = 该篇对应母文章(erishen.cn) + GitHub 仓库
 # （数据来自 data/repo_articles.json，由各仓库 README 中的 erishen.cn 链接扫描生成）
