@@ -537,8 +537,8 @@ def build_report_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sort",
         choices=("total", "daily", "juejin", "segmentfault", "date"),
-        default="total",
-        help="排序字段（默认 total=合计阅读降序；daily=总日均阅读）",
+        default="daily",
+        help="排序字段（默认 daily=总日均阅读降序；total=合计阅读）",
     )
     parser.add_argument("--limit", type=int, default=0, help="仅显示前 N 篇，0 表示全部")
     parser.add_argument("--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径")
