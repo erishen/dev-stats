@@ -426,7 +426,7 @@ def _match_juejin_wp(posts: list[JuejinPost], mapping: dict[str, str]) -> None:
 
 def render_juejin_table(posts: list[JuejinPost], user_id: str, art_repos: dict | None = None) -> Table:
     table = Table(title=f"掘金账号 {user_id} 的文章数据", title_style="bold cyan")
-    table.add_column("文章", overflow="fold")
+    table.add_column("文章", overflow="fold", max_width=40)
     table.add_column("发布时间", justify="right")
     table.add_column("关联", justify="left")
     table.add_column("阅读", justify="right")
@@ -592,7 +592,7 @@ def sort_report_rows(rows, key):
 
 def render_report_table(rows, art_repos=None) -> Table:
     table = Table(title="内容平台整体汇总（掘金 + 思否）", title_style="bold cyan")
-    table.add_column("文章", overflow="fold")
+    table.add_column("文章", overflow="fold", max_width=40)
     table.add_column("发布时间", justify="right")
     table.add_column("关联", justify="left")
     table.add_column("掘金", justify="right")
@@ -766,7 +766,7 @@ def sort_sf_posts(posts, key: str, today: date | None = None):
 
 def render_segmentfault_table(posts, source: str, art_repos: dict | None = None) -> Table:
     table = Table(title=f"思否账号 {source} 的文章数据", title_style="bold cyan")
-    table.add_column("文章", overflow="fold")
+    table.add_column("文章", overflow="fold", max_width=40)
     table.add_column("发布时间", justify="right")
     table.add_column("关联", justify="left")
     table.add_column("阅读", justify="right")
