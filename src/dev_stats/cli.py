@@ -280,10 +280,12 @@ def main(argv: list[str] | None = None) -> int:
         # 查询自己时列表会包含私有仓库，默认隐藏（--include-private 展示）
         repos = [r for r in repos if not r.private]
 
-    # 先排序并截断，使 --limit 同时限制后续采集量（避免对全部仓库逐项请求）
-    repos = sort_repos(repos, args.sort)
-    if args.limit > 0:
-        repos = repos[: args.limit]
+    # 流量相关排序（clones/views）需先采集再排序；公开字段排序先排序截断以减少采集量
+    traffic_sort = args.sort in ("clones", "views")
+    if not traffic_sort:
+        repos = sort_repos(repos, args.sort)
+        if args.limit > 0:
+            repos = repos[: args.limit]
 
     # 流量数据仅仓库管理员可见：认证用户 == 查询用户 时才采集
     show_traffic = False
@@ -298,6 +300,10 @@ def main(argv: list[str] | None = None) -> int:
         if not any(r.traffic_available for r in repos):
             show_traffic = False
             show_traffic_full = False
+        if traffic_sort:
+            repos = sort_repos(repos, args.sort)
+            if args.limit > 0:
+                repos = repos[: args.limit]
 
     # 可选指标层：详情 / 社区健康 / 活跃度（均为公开数据，按 flag 逐仓库请求）
     if args.detail:
