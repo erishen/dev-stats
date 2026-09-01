@@ -1,0 +1,27 @@
+[project]
+name = "dev-stats"
+version = "0.1.0"
+description = "查询 GitHub 仓库与内容平台文章的可观测指标（star/clone/社区/活跃/阅读/点赞/评论），终端表格 + CSV 导出"
+readme = "README.md"
+authors = [
+    { name = "Erishen", email = "3292057+erishen@users.noreply.github.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.34.2",
+    "rich>=15.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+dev-stats = "dev_stats:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.5",
+]

@@ -1,0 +1,21 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# LSP / tool caches
+.serena/
+.ruff_cache/
+.pytest_cache/
+
+# make csv 运行时导出
+stats.csv
+
+# 本地环境变量（含隐私，不入库）
+.env
