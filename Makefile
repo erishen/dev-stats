@@ -30,9 +30,10 @@ check: ## 提交/收尾前一把梭：lint + 格式校验 + 测试
 	uv run ruff format --check src tests
 	@$(MAKE) --no-print-directory test
 
-# stats.csv 已在 .gitignore 中（运行时数据导出，不入库）
-csv: ## 导出自己的仓库统计到 stats.csv（按 14 天 clone 数降序，含流量数据）
-	uv run dev-stats --sort clones --csv stats.csv
+# output/ 已在 .gitignore 中（运行时数据导出，不入库）
+csv: ## 导出自己的仓库统计到 output/stats.csv（按 14 天 clone 数降序，默认脱敏不含流量）
+	mkdir -p output
+	uv run dev-stats --sort clones --csv output/stats.csv
 
 # 内容平台查询：默认按日均阅读（传播效率）排序；可加 ARGS 覆盖，
 # 如 make juejin ARGS="--sort views --limit 5" 或 make segmentfault ARGS="--csv sf.csv"
