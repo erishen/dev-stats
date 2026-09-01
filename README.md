@@ -38,6 +38,8 @@ uv run dev-stats --csv stats.csv
 uv run dev-stats --no-traffic
 uv run dev-stats juejin --sort diggs --limit 10        # 掘金：查 .env 里 JUEJIN_USER_ID 的文章数据
 uv run dev-stats juejin --user-id 123456789012 --csv juejin.csv
+uv run dev-stats segmentfault --sort views --limit 10       # 思否：扫描 wordpress-tools 文章的 sf_id 查数据
+uv run dev-stats segmentfault --ids 1190000048181252 --csv sf.csv
 ```
 
 全部参数见 `uv run dev-stats --help`。

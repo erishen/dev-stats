@@ -14,6 +14,7 @@ from rich.table import Table
 
 from .api import GitHubClient, RepoStats
 from .juejin import JuejinClient, JuejinPost
+from .segmentfault import SegmentFaultClient
 
 SORT_KEYS = ("stars", "forks", "clones", "views", "updated", "name", "size", "health", "commits")
 UNAVAILABLE = "-"
@@ -215,6 +216,8 @@ def export_csv(repos: list[RepoStats], path: str) -> None:
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()  # 从 .env 读取 GITHUB_TOKEN / JUEJIN_USER_ID 等配置（若存在）
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "segmentfault":
+        return run_segmentfault(argv[1:])
     if argv and argv[0] == "juejin":
         return run_juejin(argv[1:])
     args = build_parser().parse_args(argv)
@@ -431,3 +434,155 @@ def run_juejin(argv: list[str]) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+# ---------- 思否（segmentfault）子命令 ----------
+
+
+def build_segmentfault_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="dev-stats segmentfault",
+        description="查询思否账号文章的阅读 / 访客 / 点赞 / 收藏 / 评论（公开文章页，无需登录）",
+    )
+    parser.add_argument(
+        "--ids",
+        default=None,
+        help="逗号分隔的思否文章 ID（https://segmentfault.com/a/<id> 里的数字），缺省从 --articles-dir 扫描",
+    )
+    parser.add_argument(
+        "--articles-dir",
+        default=None,
+        help="wordpress-tools 文章目录（扫描 frontmatter 的 sf_id），缺省读 .env 的 SEGMENTFAULT_ARTICLES_DIR",
+    )
+    parser.add_argument(
+        "--sort",
+        choices=("views", "diggs", "comments", "date"),
+        default="views",
+        help="排序字段（默认 views 降序）",
+    )
+    parser.add_argument("--limit", type=int, default=0, help="仅显示前 N 篇，0 表示全部")
+    parser.add_argument("--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径")
+    return parser
+
+
+def _scan_sf_ids(articles_dir: str) -> list[str]:
+    """从 wordpress-tools 文章 frontmatter 提取思否文章 ID（sf_id）。"""
+    import glob
+    import re as _re
+
+    out = []
+    for f in glob.glob(os.path.join(articles_dir, "*.md")):
+        try:
+            with open(f, encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        m = _re.search(r"^sf_id:\s*(?P<id>\d+)", text, _re.M)
+        if m:
+            out.append(m.group("id"))
+    return sorted(set(out))
+
+
+def sort_sf_posts(posts, key: str):
+    if key == "date":
+        return sorted(posts, key=lambda p: p.publish_time, reverse=True)
+    attr = {
+        "views": lambda p: p.sort_key_views,
+        "diggs": lambda p: p.sort_key_diggs,
+        "comments": lambda p: p.sort_key_comments,
+    }[key]
+    return sorted(posts, key=attr, reverse=True)
+
+
+def render_segmentfault_table(posts, source: str) -> Table:
+    table = Table(title=f"思否账号 {source} 的文章数据", title_style="bold cyan")
+    table.add_column("文章", overflow="fold")
+    table.add_column("发布时间", justify="right")
+    table.add_column("阅读", justify="right")
+    table.add_column("访客", justify="right")
+    table.add_column("点赞", justify="right")
+    table.add_column("收藏", justify="right")
+    table.add_column("评论", justify="right")
+    for p in posts:
+        table.add_row(
+            p.title or UNAVAILABLE,
+            p.publish_time or UNAVAILABLE,
+            _fmt(p.view_count),
+            _fmt(p.unique_view_count),
+            _fmt(p.digg_count),
+            _fmt(p.bookmark_count),
+            _fmt(p.comment_count),
+        )
+    total_views = sum(p.view_count or 0 for p in posts)
+    total_diggs = sum(p.digg_count or 0 for p in posts)
+    total_comments = sum(p.comment_count or 0 for p in posts)
+    table.caption = "  |  ".join(
+        [f"共 {len(posts)} 篇", f"总阅读 {total_views:,}", f"总点赞 {total_diggs:,}", f"总评论 {total_comments:,}"]
+    )
+    return table
+
+
+def export_segmentfault_csv(posts, path: str) -> None:
+    fields = [
+        "title",
+        "post_id",
+        "url",
+        "publish_time",
+        "view_count",
+        "unique_view_count",
+        "digg_count",
+        "bookmark_count",
+        "comment_count",
+    ]
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        for p in posts:
+            writer.writerow(
+                {
+                    "title": p.title,
+                    "post_id": p.post_id,
+                    "url": p.url,
+                    "publish_time": p.publish_time,
+                    "view_count": p.view_count,
+                    "unique_view_count": p.unique_view_count,
+                    "digg_count": p.digg_count,
+                    "bookmark_count": p.bookmark_count,
+                    "comment_count": p.comment_count,
+                }
+            )
+
+
+def run_segmentfault(argv: list[str]) -> int:
+    args = build_segmentfault_parser().parse_args(argv)
+    console = Console()
+    ids = []
+    if args.ids:
+        ids = [s.strip() for s in args.ids.split(",") if s.strip()]
+    else:
+        dir_path = args.articles_dir or os.environ.get("SEGMENTFAULT_ARTICLES_DIR")
+        if not dir_path:
+            console.print(
+                "[red]未指定 --ids / --articles-dir，且 .env/SEGMENTFAULT_ARTICLES_DIR 未配置。[/red] "
+                "思否文章 ID 在你的 wordpress-tools 文章 frontmatter 的 sf_id 字段里。"
+            )
+            return 2
+        ids = _scan_sf_ids(dir_path)
+    if not ids:
+        console.print("[yellow]没有可查的思否文章 ID。[/yellow]")
+        return 1
+
+    client = SegmentFaultClient()
+    try:
+        posts = client.fetch_posts(ids)
+    except Exception as exc:
+        console.print(f"[red]拉取思否文章失败：{exc}[/red]")
+        return 1
+
+    posts = sort_sf_posts(posts, args.sort)
+    if args.limit > 0:
+        posts = posts[: args.limit]
+    console.print(render_segmentfault_table(posts, str(len(ids))))
+    if args.csv:
+        export_segmentfault_csv(posts, args.csv)
+        console.print(f"[green]已导出 CSV：{args.csv}[/green]")
+    return 0
