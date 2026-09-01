@@ -6,6 +6,7 @@ import argparse
 import csv
 import os
 import sys
+import time
 from datetime import UTC, date, datetime, timedelta
 
 from dotenv import load_dotenv
@@ -297,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
         with console.status("采集 clone/views 流量数据…"):
             for r in repos:
                 fetch_traffic(r)
+                time.sleep(0.05)
         if not any(r.traffic_available for r in repos):
             show_traffic = False
             show_traffic_full = False
@@ -355,6 +357,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.csv:
         export_csv(repos, args.csv)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
+    if client.rate_remaining is not None and client.rate_remaining < 500:
+        console.print(
+            f"[yellow][WARNING] GitHub API rate remaining low: "
+            f"{client.rate_remaining}/{client.rate_limit or '?'} (resets hourly)[/yellow]"
+        )
     return 0
 
 

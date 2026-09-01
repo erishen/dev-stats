@@ -148,6 +148,8 @@ class GitHubClient:
             headers["Authorization"] = f"Bearer {self.token}"
         self.session.headers.update(headers)
         self.per_page = per_page
+        self.rate_remaining: int | None = None
+        self.rate_limit: int | None = None
 
     @property
     def authenticated(self) -> bool:
@@ -157,6 +159,12 @@ class GitHubClient:
         """GET 请求返回原始响应；404/403（权限或限流）返回 None，其余错误抛出。"""
         url = f"{API_ROOT}{path}"
         resp = self.session.get(url, params=params or None, timeout=TIMEOUT)
+        remaining = resp.headers.get("X-RateLimit-Remaining")
+        if remaining is not None:
+            self.rate_remaining = int(remaining)
+        limit = resp.headers.get("X-RateLimit-Limit")
+        if limit is not None:
+            self.rate_limit = int(limit)
         if resp.status_code in (403, 404):
             return None
         resp.raise_for_status()
