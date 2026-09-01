@@ -14,9 +14,18 @@ from rich.console import Console
 from rich.table import Table
 
 from .api import GitHubClient, RepoStats
-from .juejin import JuejinClient, JuejinPost
+
+try:
+    from .juejin import JuejinClient, JuejinPost
+except ImportError:
+    JuejinClient = None
+    JuejinPost = None
 from .link import build_article_repos, load_repo_articles, repo_label
-from .segmentfault import SegmentFaultClient
+
+try:
+    from .segmentfault import SegmentFaultClient
+except ImportError:
+    SegmentFaultClient = None
 
 SORT_KEYS = ("stars", "forks", "clones", "views", "updated", "name", "size", "health", "commits")
 UNAVAILABLE = "-"
@@ -526,6 +535,10 @@ def export_juejin_csv(posts: list[JuejinPost], path: str, art_repos: dict | None
 
 
 def run_juejin(argv: list[str]) -> int:
+    if JuejinClient is None:
+        console = Console()
+        console.print("[yellow]掘金功能为本地模块，当前环境未找到 dev_stats.juejin。[/yellow]")
+        return 0
     args = build_juejin_parser().parse_args(argv)
     console = Console()
     user_id = args.user_id or os.environ.get("JUEJIN_USER_ID")
@@ -874,6 +887,10 @@ def export_segmentfault_csv(posts, path: str, art_repos: dict | None = None) -> 
 
 
 def run_segmentfault(argv: list[str]) -> int:
+    if SegmentFaultClient is None:
+        console = Console()
+        console.print("[yellow]思否功能为本地模块，当前环境未找到 dev_stats.segmentfault。[/yellow]")
+        return 0
     if not os.environ.get("SEGMENTFAULT_ENABLED"):
         console = Console()
         console.print(

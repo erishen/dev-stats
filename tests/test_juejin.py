@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
+pytest.importorskip("dev_stats.juejin")
+
 from dev_stats.cli import render_juejin_table, sort_posts
 from dev_stats.juejin import JuejinClient, JuejinPost
 

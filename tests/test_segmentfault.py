@@ -6,6 +6,9 @@ import json
 from datetime import date
 
 import pytest
+
+pytest.importorskip("dev_stats.segmentfault")
+
 from dev_stats.cli import _scan_sf_ids, render_segmentfault_table, sort_sf_posts
 from dev_stats.segmentfault import SegmentFaultClient, SegmentFaultPost
 

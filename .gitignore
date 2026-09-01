@@ -19,3 +19,7 @@ stats.csv
 
 # 本地环境变量（含隐私，不入库）
 .env
+
+# 内容平台抓取模块（本地个人使用，不入库，公开仓库不暴露抓取实现）
+src/dev_stats/juejin.py
+src/dev_stats/segmentfault.py
