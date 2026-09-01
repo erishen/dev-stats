@@ -14,6 +14,7 @@ from rich.table import Table
 
 from .api import GitHubClient, RepoStats
 from .juejin import JuejinClient, JuejinPost
+from .link import build_article_repos, load_repo_articles, repo_label
 from .segmentfault import SegmentFaultClient
 
 SORT_KEYS = ("stars", "forks", "clones", "views", "updated", "name", "size", "health", "commits")
@@ -341,6 +342,11 @@ def build_juejin_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--limit", type=int, default=0, help="仅显示前 N 篇，0 表示全部")
     parser.add_argument("--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径")
+    parser.add_argument(
+        "--articles-dir",
+        default=None,
+        help="wordpress-tools 掘金文章目录（扫描 frontmatter 的 wp_id 关联母文章与 GitHub 仓库），缺省读 .env 的 JUEJIN_ARTICLES_DIR",
+    )
     return parser
 
 
@@ -358,17 +364,54 @@ def sort_posts(posts: list[JuejinPost], key: str) -> list[JuejinPost]:
     return sorted(posts, key=attr, reverse=True)
 
 
-def render_juejin_table(posts: list[JuejinPost], user_id: str) -> Table:
+def _norm_title(title: str) -> str:
+    """归一化标题用于跨表匹配：去 emoji/控制符、空白与小写。"""
+    import re as _re
+    import unicodedata
+
+    cleaned = "".join(ch for ch in title if not unicodedata.category(ch).startswith("C"))
+    return _re.sub(r"\s+", "", cleaned).lower()
+
+
+def _scan_juejin_wp(articles_dir: str) -> dict[str, str]:
+    """扫描 wordpress-tools 掘金文章 frontmatter，返回 归一化标题 -> wp_id。"""
+    import glob
+    import re as _re
+
+    mapping: dict[str, str] = {}
+    for f in glob.glob(os.path.join(articles_dir, "*.md")):
+        try:
+            with open(f, encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        tm = _re.search(r"^title:\s*[\"']?(?P<t>[^\"'\n]+)", text, _re.M)
+        wm = _re.search(r"^wp_id:\s*(?P<w>\d+)", text, _re.M)
+        if tm and wm:
+            mapping[_norm_title(tm.group("t"))] = wm.group("w")
+    return mapping
+
+
+def _match_juejin_wp(posts: list[JuejinPost], mapping: dict[str, str]) -> None:
+    """按标题匹配填充每篇掘金文章的 wp_id（原地修改）。"""
+    for p in posts:
+        p.wp_id = mapping.get(_norm_title(p.title), "")
+
+
+def render_juejin_table(posts: list[JuejinPost], user_id: str, art_repos: dict | None = None) -> Table:
     table = Table(title=f"掘金账号 {user_id} 的文章数据", title_style="bold cyan")
     table.add_column("文章", overflow="fold")
     table.add_column("发布时间", justify="right")
+    table.add_column("关联", justify="left")
     table.add_column("阅读", justify="right")
     table.add_column("点赞", justify="right")
     table.add_column("评论", justify="right")
+    art_repos = art_repos or {}
     for p in posts:
         table.add_row(
             p.title or UNAVAILABLE,
             p.publish_time or UNAVAILABLE,
+            repo_label(art_repos, p.wp_id) or UNAVAILABLE,
             _fmt(p.view_count),
             _fmt(p.digg_count),
             _fmt(p.comment_count),
@@ -382,8 +425,19 @@ def render_juejin_table(posts: list[JuejinPost], user_id: str) -> Table:
     return table
 
 
-def export_juejin_csv(posts: list[JuejinPost], path: str) -> None:
-    fields = ["title", "post_id", "url", "publish_time", "view_count", "digg_count", "comment_count"]
+def export_juejin_csv(posts: list[JuejinPost], path: str, art_repos: dict | None = None) -> None:
+    fields = [
+        "title",
+        "post_id",
+        "url",
+        "publish_time",
+        "view_count",
+        "digg_count",
+        "comment_count",
+        "wp_id",
+        "repos",
+    ]
+    art_repos = art_repos or {}
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
@@ -397,6 +451,8 @@ def export_juejin_csv(posts: list[JuejinPost], path: str) -> None:
                     "view_count": p.view_count,
                     "digg_count": p.digg_count,
                     "comment_count": p.comment_count,
+                    "wp_id": p.wp_id,
+                    "repos": repo_label(art_repos, p.wp_id),
                 }
             )
 
@@ -422,12 +478,20 @@ def run_juejin(argv: list[str]) -> int:
         console.print(f"[yellow]该掘金账号没有可查的已发布文章（user_id={user_id}）。[/yellow]")
         return 1
 
+    dir_path = args.articles_dir or os.environ.get("JUEJIN_ARTICLES_DIR")
+    if dir_path:
+        try:
+            _match_juejin_wp(posts, _scan_juejin_wp(dir_path))
+        except OSError as exc:
+            console.print(f"[yellow]扫描掘金文章目录失败，跳过关联：{exc}[/yellow]")
+    art_repos = build_article_repos(load_repo_articles())
+
     posts = sort_posts(posts, args.sort)
     if args.limit > 0:
         posts = posts[: args.limit]
-    console.print(render_juejin_table(posts, user_id))
+    console.print(render_juejin_table(posts, user_id, art_repos))
     if args.csv:
-        export_juejin_csv(posts, args.csv)
+        export_juejin_csv(posts, args.csv, art_repos)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
     return 0
 
@@ -464,22 +528,28 @@ def build_segmentfault_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _scan_sf_ids(articles_dir: str) -> list[str]:
-    """从 wordpress-tools 文章 frontmatter 提取思否文章 ID（sf_id）。"""
+def _scan_sf_wp(articles_dir: str) -> dict[str, str]:
+    """扫描思否文章 frontmatter，返回 sf_id -> wp_id（wp_id 缺失则为空串）。"""
     import glob
     import re as _re
 
-    out = []
+    mapping: dict[str, str] = {}
     for f in glob.glob(os.path.join(articles_dir, "*.md")):
         try:
             with open(f, encoding="utf-8") as fh:
                 text = fh.read()
         except OSError:
             continue
-        m = _re.search(r"^sf_id:\s*(?P<id>\d+)", text, _re.M)
-        if m:
-            out.append(m.group("id"))
-    return sorted(set(out))
+        sm = _re.search(r"^sf_id:\s*(?P<id>\d+)", text, _re.M)
+        wm = _re.search(r"^wp_id:\s*(?P<w>\d+)", text, _re.M)
+        if sm:
+            mapping[sm.group("id")] = wm.group("w") if wm else ""
+    return mapping
+
+
+def _scan_sf_ids(articles_dir: str) -> list[str]:
+    """从 wordpress-tools 文章 frontmatter 提取思否文章 ID（sf_id）。"""
+    return sorted(set(_scan_sf_wp(articles_dir)))
 
 
 def sort_sf_posts(posts, key: str):
@@ -493,19 +563,22 @@ def sort_sf_posts(posts, key: str):
     return sorted(posts, key=attr, reverse=True)
 
 
-def render_segmentfault_table(posts, source: str) -> Table:
+def render_segmentfault_table(posts, source: str, art_repos: dict | None = None) -> Table:
     table = Table(title=f"思否账号 {source} 的文章数据", title_style="bold cyan")
     table.add_column("文章", overflow="fold")
     table.add_column("发布时间", justify="right")
+    table.add_column("关联", justify="left")
     table.add_column("阅读", justify="right")
     table.add_column("访客", justify="right")
     table.add_column("点赞", justify="right")
     table.add_column("收藏", justify="right")
     table.add_column("评论", justify="right")
+    art_repos = art_repos or {}
     for p in posts:
         table.add_row(
             p.title or UNAVAILABLE,
             p.publish_time or UNAVAILABLE,
+            repo_label(art_repos, p.wp_id) or UNAVAILABLE,
             _fmt(p.view_count),
             _fmt(p.unique_view_count),
             _fmt(p.digg_count),
@@ -521,7 +594,7 @@ def render_segmentfault_table(posts, source: str) -> Table:
     return table
 
 
-def export_segmentfault_csv(posts, path: str) -> None:
+def export_segmentfault_csv(posts, path: str, art_repos: dict | None = None) -> None:
     fields = [
         "title",
         "post_id",
@@ -532,7 +605,10 @@ def export_segmentfault_csv(posts, path: str) -> None:
         "digg_count",
         "bookmark_count",
         "comment_count",
+        "wp_id",
+        "repos",
     ]
+    art_repos = art_repos or {}
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
@@ -548,6 +624,8 @@ def export_segmentfault_csv(posts, path: str) -> None:
                     "digg_count": p.digg_count,
                     "bookmark_count": p.bookmark_count,
                     "comment_count": p.comment_count,
+                    "wp_id": p.wp_id,
+                    "repos": repo_label(art_repos, p.wp_id),
                 }
             )
 
@@ -556,6 +634,7 @@ def run_segmentfault(argv: list[str]) -> int:
     args = build_segmentfault_parser().parse_args(argv)
     console = Console()
     ids = []
+    wp_map: dict[str, str] = {}
     if args.ids:
         ids = [s.strip() for s in args.ids.split(",") if s.strip()]
     else:
@@ -566,7 +645,8 @@ def run_segmentfault(argv: list[str]) -> int:
                 "思否文章 ID 在你的 wordpress-tools 文章 frontmatter 的 sf_id 字段里。"
             )
             return 2
-        ids = _scan_sf_ids(dir_path)
+        wp_map = _scan_sf_wp(dir_path)
+        ids = sorted(set(wp_map))
     if not ids:
         console.print("[yellow]没有可查的思否文章 ID。[/yellow]")
         return 1
@@ -577,12 +657,15 @@ def run_segmentfault(argv: list[str]) -> int:
     except Exception as exc:
         console.print(f"[red]拉取思否文章失败：{exc}[/red]")
         return 1
+    for p in posts:
+        p.wp_id = wp_map.get(p.post_id, "")
+    art_repos = build_article_repos(load_repo_articles())
 
     posts = sort_sf_posts(posts, args.sort)
     if args.limit > 0:
         posts = posts[: args.limit]
-    console.print(render_segmentfault_table(posts, str(len(ids))))
+    console.print(render_segmentfault_table(posts, str(len(ids)), art_repos))
     if args.csv:
-        export_segmentfault_csv(posts, args.csv)
+        export_segmentfault_csv(posts, args.csv, art_repos)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
     return 0

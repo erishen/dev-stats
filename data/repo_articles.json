@@ -1,0 +1,258 @@
+{
+  "fastapi-web": [
+    {
+      "wp_id": "180",
+      "title": "从零构建全栈技术知识库平台：Monorepo + Next.js 14 + FastAPI 实践",
+      "slug": "building-fullstack-knowledge-base-platform-cn",
+      "url": "https://erishen.cn/building-fullstack-knowledge-base-platform-cn/"
+    }
+  ],
+  "spring-rbac": [
+    {
+      "wp_id": "548",
+      "title": "从 RBAC 鉴权长成的小型微服务系统：Spring Cloud + 零依赖 JWT + CRM + 审计 + BFF",
+      "slug": "spring_rbac",
+      "url": "https://erishen.cn/spring_rbac-en/"
+    }
+  ],
+  "shadcn-registry": [
+    {
+      "wp_id": "192",
+      "title": "构建现代化的组件库：shadcn + Bun 带来的前端开发革命",
+      "slug": "building-shadcn-bun-component-library-cn",
+      "url": "https://erishen.cn/building-shadcn-bun-component-library-cn/"
+    }
+  ],
+  "interview": [
+    {
+      "wp_id": "180",
+      "title": "从零构建全栈技术知识库平台：Monorepo + Next.js 14 + FastAPI 实践",
+      "slug": "building-fullstack-knowledge-base-platform-cn",
+      "url": "https://erishen.cn/building-fullstack-knowledge-base-platform-cn/"
+    }
+  ],
+  "contacts-assistant": [
+    {
+      "wp_id": "530",
+      "title": "本地优先的 AI 通讯录助手：把大模型请进地址簿，数据却不离家",
+      "slug": "contacts_assistant",
+      "url": "https://erishen.cn/contacts_assistant-en/"
+    }
+  ],
+  "firefly": [
+    {
+      "wp_id": "539",
+      "title": "用 React Three Fiber 打造会对话的 3D 数字人：架构与部署的真实踩坑记录",
+      "slug": "firefly",
+      "url": "https://erishen.cn/firefly-en/"
+    }
+  ],
+  "ai-chat": [
+    {
+      "wp_id": "127",
+      "title": "从零到一：打造一个支持 RAG 的智能聊天应用",
+      "slug": "building-rag-smart-chat-app-cn",
+      "url": "https://erishen.cn/building-rag-smart-chat-app-cn/"
+    }
+  ],
+  "erishen": [
+    {
+      "wp_id": "681",
+      "title": "从 SQLite 到 LLM 重排：一个 Rust RAG 服务的七层设计决策",
+      "slug": "rag_task_service",
+      "url": "https://erishen.cn/rag_task_service/"
+    },
+    {
+      "wp_id": "711",
+      "title": "Text2SQL 确定性管线 + ReAct 双路径：datapulse AI BI 工作台架构解析",
+      "slug": "datapulse",
+      "url": "https://erishen.cn/datapulse/"
+    },
+    {
+      "wp_id": "575",
+      "title": "AutoGen PSE 架构解析：用 Planner/Specialist/Evaluator 模式构建可靠的多智能体协作系统",
+      "slug": "autogen-pse-architecture",
+      "url": "https://erishen.cn/autogen-pse-architecture/"
+    },
+    {
+      "wp_id": "548",
+      "title": "从 RBAC 鉴权长成的小型微服务系统：Spring Cloud + 零依赖 JWT + CRM + 审计 + BFF",
+      "slug": "spring_rbac",
+      "url": "https://erishen.cn/spring_rbac/"
+    }
+  ],
+  "lobster": [
+    {
+      "wp_id": "230",
+      "title": "给 AI 助手搭一个工具服务器：Lobster 的架构思路",
+      "slug": "building-ai-tool-server-lobster-architecture-cn",
+      "url": "https://erishen.cn/building-ai-tool-server-lobster-architecture-cn/"
+    }
+  ],
+  "langchain-llm-toolkit": [
+    {
+      "wp_id": "421",
+      "title": "混合检索架构：当关键词遇上语义理解",
+      "slug": "hybrid-retrieval-architecture",
+      "url": "https://erishen.cn/hybrid-retrieval-architecture/"
+    }
+  ],
+  "stock-analyzer": [
+    {
+      "wp_id": "800",
+      "title": "51个指标 × 5000只股票：全市场技术扫描的工程实践",
+      "slug": "stock_analyzer",
+      "url": "https://erishen.cn/stock_analyzer/"
+    }
+  ],
+  "spring-order": [
+    {
+      "wp_id": "727",
+      "title": "分布式订单系统演进：Spring Boot + React 如何从单体到抗住高并发",
+      "slug": "spring_order",
+      "url": "https://erishen.cn/spring_order-en/"
+    }
+  ],
+  "cicdkit": [
+    {
+      "wp_id": "721",
+      "title": "cicdkit 工程实践：一个用纯 Go 标准库打造的本地 CI/CD 单二进制平台",
+      "slug": "cicdkit",
+      "url": "https://erishen.cn/cicdkit-en/"
+    }
+  ],
+  "markdown-library": [
+    {
+      "wp_id": "701",
+      "title": "本地优先的 Markdown 索引：从零依赖 Rust 到只读安全的设计抉择",
+      "slug": "markdown_library",
+      "url": "https://erishen.cn/markdown_library-en/"
+    }
+  ],
+  "resolve-tui": [
+    {
+      "wp_id": "837",
+      "title": "从 Chat UI 到 Agent Workbench：一个终端编码 agent 的交互层是怎么升级的",
+      "slug": "resolve_tui",
+      "url": "https://erishen.cn/resolve_tui-en/"
+    }
+  ],
+  "photo-library": [
+    {
+      "wp_id": "692",
+      "title": "本地照片索引：4 个设计决策，把\"文件堆\"变成可查询的数据集",
+      "slug": "photo_library-zh",
+      "url": "https://erishen.cn/photo_library-en/"
+    }
+  ],
+  "video-library": [
+    {
+      "wp_id": "706",
+      "title": "纯本地只读视频索引：blake3 内容去重与 Range 预览，我如何做到绝不改动一个原文件",
+      "slug": "video_library",
+      "url": "https://erishen.cn/video_library-en/"
+    }
+  ],
+  "rag-task-service": [
+    {
+      "wp_id": "681",
+      "title": "从 SQLite 到 LLM 重排：一个 Rust RAG 服务的七层设计决策",
+      "slug": "rag_task_service",
+      "url": "https://erishen.cn/rag_task_service-en/"
+    }
+  ],
+  "resolve-harness": [
+    {
+      "wp_id": "739",
+      "title": "能算的绝不调模型：resolve-harness 的确定性 Fast Path 运行时",
+      "slug": "resolve_harness",
+      "url": "https://erishen.cn/resolve_harness-en/"
+    }
+  ],
+  "resolve-studio": [
+    {
+      "wp_id": "835",
+      "title": "Cordis 插件化 Agent 运行时：用 DI 容器把 LLM 后端、工具、审批流全部变成配置",
+      "slug": "resolve_studio",
+      "url": "https://erishen.cn/resolve_studio-en/"
+    }
+  ],
+  "datapulse": [
+    {
+      "wp_id": "711",
+      "title": "Text2SQL 确定性管线 + ReAct 双路径：datapulse AI BI 工作台架构解析",
+      "slug": "datapulse",
+      "url": "https://erishen.cn/datapulse-en/"
+    }
+  ],
+  "ai-workbench": [
+    {
+      "wp_id": "523",
+      "title": "不信任执行者：桌面 AI 工作台的验证架构设计",
+      "slug": "ai_workbench",
+      "url": "https://erishen.cn/ai_workbench-en/"
+    }
+  ],
+  "specpulse": [
+    {
+      "wp_id": "732",
+      "title": "基于 Electron + React + Vite 的 AI UI 生成工作台，用自然语言描述需求，LLM 转为声明式 UI spec 并编译成真实 React 组件实时预览",
+      "slug": "specpulse",
+      "url": "https://erishen.cn/specpulse-en/"
+    }
+  ],
+  "autogen-pse": [
+    {
+      "wp_id": "397",
+      "title": "基于 AutoGen 构建 PSE 三角色闭环：一个可重试、可追溯的 Agent 协作框架",
+      "slug": "autogen-pse-triangle-agent-framework",
+      "url": "https://erishen.cn/autogen-pse-triangle-agent-framework-en/"
+    },
+    {
+      "wp_id": "575",
+      "title": "AutoGen PSE 架构解析：用 Planner/Specialist/Evaluator 模式构建可靠的多智能体协作系统",
+      "slug": "autogen-pse-architecture",
+      "url": "https://erishen.cn/autogen-pse-architecture-en/"
+    }
+  ],
+  "ai-analyze": [
+    {
+      "wp_id": "234",
+      "title": "AI-Analyze：五个不显而易见的设计决策",
+      "slug": "ai-analyze-five-design-decisions-cn",
+      "url": "https://erishen.cn/ai-analyze-five-design-decisions-cn/"
+    }
+  ],
+  "langgraph-pse": [
+    {
+      "wp_id": "456",
+      "title": "LangGraph PSE: 用状态机显式建模 PSE 三角色协作",
+      "slug": "langgraph-pse-design-decisions",
+      "url": "https://erishen.cn/langgraph-pse-design-decisions-en/"
+    }
+  ],
+  "agentic-souls": [
+    {
+      "wp_id": "414",
+      "title": "文档即状态机：Agentic Souls 如何用 Markdown 驱动 AI 软件开发工作流",
+      "slug": "document-as-state-machine-agentic-souls-markdown-workflow",
+      "url": "https://erishen.cn/document-as-state-machine-agentic-souls-markdown-workflow/"
+    }
+  ],
+  "crewai-pse": [
+    {
+      "wp_id": "426",
+      "title": "当 LLM 开始骗自己：一个用正则表达式守护文章可信度的多 Agent 框架",
+      "slug": "crewai-pse-programmatic-verification",
+      "url": "https://erishen.cn/crewai-pse-programmatic-verification-en/"
+    }
+  ],
+  "llamaindex-pse": [
+    {
+      "wp_id": "464",
+      "title": "让智能体从源头不说谎：用 LlamaIndex Workflow 构建 RAG 接地的 PSE 多智能体框架",
+      "slug": "llamaindex-pse-rag-workflow",
+      "url": "https://erishen.cn/llamaindex-pse-rag-workflow-en/"
+    }
+  ]
+}

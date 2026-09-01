@@ -40,6 +40,8 @@ uv run dev-stats juejin --sort diggs --limit 10        # 掘金：查 .env 里 J
 uv run dev-stats juejin --user-id 123456789012 --csv juejin.csv
 uv run dev-stats segmentfault --sort views --limit 10       # 思否：扫描 wordpress-tools 文章的 sf_id 查数据
 uv run dev-stats segmentfault --ids 1190000048181252 --csv sf.csv
+# 掘金/思否表格里的“关联”列 = 该篇对应母文章(erishen.cn) + GitHub 仓库
+# （数据来自 data/repo_articles.json，由各仓库 README 中的 erishen.cn 链接扫描生成）
 ```
 
 全部参数见 `uv run dev-stats --help`。
