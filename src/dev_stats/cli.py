@@ -145,6 +145,13 @@ def _fmt_daily(value: float) -> str:
     return UNAVAILABLE if value <= 0 else f"{value:.1f}"
 
 
+def _strip_emoji(title: str) -> str:
+    """去掉标题中的 emoji / 符号类字符，避免终端渲染宽度与 wcwidth 计算不一致导致表格错位。"""
+    import unicodedata
+
+    return "".join(ch for ch in title if unicodedata.category(ch) not in ("So", "Sk") and ch != "\ufe0f").strip()
+
+
 def _daily_views(view_count: int | None, publish_time: str, today: date | None = None) -> float:
     """日均阅读 = 阅读量 / 距发布天数（至少 1 天）；缺发布时间或阅读时返回 0。
 
@@ -436,7 +443,7 @@ def render_juejin_table(posts: list[JuejinPost], user_id: str, art_repos: dict |
     art_repos = art_repos or {}
     for p in posts:
         table.add_row(
-            p.title or UNAVAILABLE,
+            _strip_emoji(p.title) or UNAVAILABLE,
             p.publish_time or UNAVAILABLE,
             repo_label(art_repos, p.wp_id) or UNAVAILABLE,
             _fmt(p.view_count),
@@ -604,7 +611,7 @@ def render_report_table(rows, art_repos=None) -> Table:
     art_repos = art_repos or {}
     for e in rows:
         table.add_row(
-            e["title"] or UNAVAILABLE,
+            _strip_emoji(e["title"]) or UNAVAILABLE,
             e["pub"] or UNAVAILABLE,
             repo_label(art_repos, e["wp_id"]) or UNAVAILABLE,
             _fmt(e["jj_views"]),
@@ -778,7 +785,7 @@ def render_segmentfault_table(posts, source: str, art_repos: dict | None = None)
     art_repos = art_repos or {}
     for p in posts:
         table.add_row(
-            p.title or UNAVAILABLE,
+            _strip_emoji(p.title) or UNAVAILABLE,
             p.publish_time or UNAVAILABLE,
             repo_label(art_repos, p.wp_id) or UNAVAILABLE,
             _fmt(p.view_count),
