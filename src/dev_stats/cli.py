@@ -243,6 +243,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_segmentfault(argv[1:])
     if argv and argv[0] == "juejin":
         return run_juejin(argv[1:])
+    if argv and argv[0] == "report":
+        return run_report(argv[1:])
     args = build_parser().parse_args(argv)
     console = Console()
 
@@ -520,6 +522,175 @@ def run_juejin(argv: list[str]) -> int:
     console.print(render_juejin_table(posts, user_id, art_repos))
     if args.csv:
         export_juejin_csv(posts, args.csv, art_repos)
+        console.print(f"[green]已导出 CSV：{args.csv}[/green]")
+    return 0
+
+
+# ---------- 跨平台汇总（report）子命令 ----------
+
+
+def build_report_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="dev-stats report",
+        description="汇总掘金 + 思否文章数据，按母文章(wp_id)合并为跨平台对比表",
+    )
+    parser.add_argument(
+        "--sort",
+        choices=("total", "daily", "juejin", "segmentfault", "date"),
+        default="total",
+        help="排序字段（默认 total=合计阅读降序；daily=总日均阅读）",
+    )
+    parser.add_argument("--limit", type=int, default=0, help="仅显示前 N 篇，0 表示全部")
+    parser.add_argument("--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径")
+    return parser
+
+
+def _merge_platform_posts(jj_posts, sf_posts):
+    """按 wp_id 合并掘金与思否数据为对比行（无 wp_id 的按平台+id 单独成行）。"""
+    rows = {}
+    for p in jj_posts:
+        key = p.wp_id or ("jj:" + p.post_id)
+        e = rows.setdefault(
+            key,
+            {"wp_id": p.wp_id, "title": "", "pub": "", "jj_views": 0, "jj_daily": 0.0, "sf_views": 0, "sf_daily": 0.0},
+        )
+        e["title"] = e["title"] or p.title
+        e["jj_views"] = p.view_count or 0
+        e["jj_daily"] = _daily_views(p.view_count, p.publish_time)
+        if not e["pub"] or (p.publish_time and p.publish_time < e["pub"]):
+            e["pub"] = p.publish_time
+    for p in sf_posts:
+        key = p.wp_id or ("sf:" + p.post_id)
+        e = rows.setdefault(
+            key,
+            {"wp_id": p.wp_id, "title": "", "pub": "", "jj_views": 0, "jj_daily": 0.0, "sf_views": 0, "sf_daily": 0.0},
+        )
+        e["title"] = e["title"] or p.title
+        e["sf_views"] = p.view_count or 0
+        e["sf_daily"] = _daily_views(p.view_count, p.publish_time)
+        if not e["pub"] or (p.publish_time and p.publish_time < e["pub"]):
+            e["pub"] = p.publish_time
+    out = []
+    for e in rows.values():
+        e["total_views"] = e["jj_views"] + e["sf_views"]
+        e["total_daily"] = _daily_views(e["total_views"], e["pub"])
+        out.append(e)
+    return out
+
+
+def sort_report_rows(rows, key):
+    if key == "date":
+        return sorted(rows, key=lambda e: e["pub"] or "", reverse=True)
+    attr = {
+        "total": lambda e: e["total_views"],
+        "daily": lambda e: e["total_daily"],
+        "juejin": lambda e: e["jj_views"],
+        "segmentfault": lambda e: e["sf_views"],
+    }[key]
+    return sorted(rows, key=attr, reverse=True)
+
+
+def render_report_table(rows, art_repos=None) -> Table:
+    table = Table(title="内容平台整体汇总（掘金 + 思否）", title_style="bold cyan")
+    table.add_column("文章", overflow="fold")
+    table.add_column("发布时间", justify="right")
+    table.add_column("关联", justify="left")
+    table.add_column("掘金", justify="right")
+    table.add_column("掘金日均", justify="right")
+    table.add_column("思否", justify="right")
+    table.add_column("思否日均", justify="right")
+    table.add_column("合计", justify="right")
+    table.add_column("总日均", justify="right")
+    art_repos = art_repos or {}
+    for e in rows:
+        table.add_row(
+            e["title"] or UNAVAILABLE,
+            e["pub"] or UNAVAILABLE,
+            repo_label(art_repos, e["wp_id"]) or UNAVAILABLE,
+            _fmt(e["jj_views"]),
+            _fmt_daily(e["jj_daily"]),
+            _fmt(e["sf_views"]),
+            _fmt_daily(e["sf_daily"]),
+            _fmt(e["total_views"]),
+            _fmt_daily(e["total_daily"]),
+        )
+    total_views = sum(e["total_views"] for e in rows)
+    table.caption = "  |  ".join([f"共 {len(rows)} 篇", f"总阅读 {total_views:,}"])
+    return table
+
+
+def export_report_csv(rows, path: str, art_repos: dict | None = None) -> None:
+    fields = [
+        "title",
+        "wp_id",
+        "publish_time",
+        "jj_views",
+        "jj_daily",
+        "sf_views",
+        "sf_daily",
+        "total_views",
+        "total_daily",
+        "repos",
+    ]
+    art_repos = art_repos or {}
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        for e in rows:
+            writer.writerow(
+                {
+                    "title": e["title"],
+                    "wp_id": e["wp_id"],
+                    "publish_time": e["pub"],
+                    "jj_views": e["jj_views"],
+                    "jj_daily": f"{e['jj_daily']:.2f}",
+                    "sf_views": e["sf_views"],
+                    "sf_daily": f"{e['sf_daily']:.2f}",
+                    "total_views": e["total_views"],
+                    "total_daily": f"{e['total_daily']:.2f}",
+                    "repos": repo_label(art_repos, e["wp_id"]),
+                }
+            )
+
+
+def run_report(argv: list[str]) -> int:
+    args = build_report_parser().parse_args(argv)
+    console = Console()
+    user_id = os.environ.get("JUEJIN_USER_ID")
+    sf_dir = os.environ.get("SEGMENTFAULT_ARTICLES_DIR")
+    if not user_id:
+        console.print("[red]未配置 JUEJIN_USER_ID（.env）。[/red]")
+        return 2
+    if not sf_dir:
+        console.print("[red]未配置 SEGMENTFAULT_ARTICLES_DIR（.env）。[/red]")
+        return 2
+
+    try:
+        jj_posts = JuejinClient().fetch_posts(user_id)
+    except Exception as exc:
+        console.print(f"[red]拉取掘金失败：{exc}[/red]")
+        return 1
+    jj_dir = os.environ.get("JUEJIN_ARTICLES_DIR")
+    if jj_dir:
+        _match_juejin_wp(jj_posts, _scan_juejin_wp(jj_dir))
+
+    try:
+        wp_map = _scan_sf_wp(sf_dir)
+        sf_posts = SegmentFaultClient().fetch_posts(sorted(set(wp_map)))
+    except Exception as exc:
+        console.print(f"[red]拉取思否失败：{exc}[/red]")
+        return 1
+    for p in sf_posts:
+        p.wp_id = wp_map.get(p.post_id, "")
+
+    rows = _merge_platform_posts(jj_posts, sf_posts)
+    rows = sort_report_rows(rows, args.sort)
+    if args.limit > 0:
+        rows = rows[: args.limit]
+    art_repos = build_article_repos(load_repo_articles())
+    console.print(render_report_table(rows, art_repos))
+    if args.csv:
+        export_report_csv(rows, args.csv, art_repos)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
     return 0
 

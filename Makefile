@@ -1,4 +1,4 @@
-.PHONY: help sync run test lint lint-fix fmt check csv juejin segmentfault clean
+.PHONY: help sync run test lint lint-fix fmt check csv juejin segmentfault report clean
 
 # 默认目标：从带 ## 注释的行提取并列出所有可用命令
 help:
@@ -41,6 +41,9 @@ juejin: ## 查掘金文章阅读/点赞/评论（默认 --sort daily，可 ARGS 
 
 segmentfault: ## 查思否文章阅读/访客/点赞/收藏/评论（默认 --sort daily，可 ARGS 覆盖）
 	uv run dev-stats segmentfault $(if $(ARGS),$(ARGS),--sort daily)
+
+report: ## 汇总掘金 + 思否，按母文章合并对比（默认 --sort total，可 ARGS 覆盖）
+	uv run dev-stats report $(if $(ARGS),$(ARGS),--sort total)
 
 # 遵守"不永久删除"约定：缓存与构建产物一律移进废纸篓（可恢复），不用 rm -rf
 clean: ## 将测试/格式缓存与构建产物移入废纸篓
