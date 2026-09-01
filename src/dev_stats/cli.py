@@ -43,6 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--include-private", action="store_true", help="包含私有仓库（仅查询自己且已认证时生效）")
     parser.add_argument("--no-traffic", action="store_true", help="跳过 clone/浏览流量采集（只查公开数据，速度更快）")
     parser.add_argument(
+        "--traffic-since-days",
+        type=int,
+        default=730,
+        help="仅对最近 N 天内有更新的仓库拉取 traffic 数据（默认 730 天=2 年，老仓库记 0）",
+    )
+    parser.add_argument(
         "--traffic-full", action="store_true", help="流量采集扩展到热门路径与来源（需本人仓库 + 管理员权限）"
     )
     parser.add_argument(
@@ -318,10 +324,21 @@ def main(argv: list[str] | None = None) -> int:
         show_traffic = True
         fetch_traffic = client.fetch_traffic_full if args.traffic_full else client.fetch_traffic
         show_traffic_full = args.traffic_full
-        with console.status("采集 clone/views 流量数据…"):
+        cutoff = date.today() - timedelta(days=args.traffic_since_days)
+        traffic_count = 0
+        with console.status(f"采集 clone/views 流量数据（仅 {args.traffic_since_days} 天内有更新的仓库）…"):
             for r in repos:
-                fetch_traffic(r)
-                time.sleep(0.05)
+                try:
+                    r_date = date.fromisoformat(str(r.updated_at)[:10])
+                except (ValueError, TypeError):
+                    r_date = date.min
+                if r_date >= cutoff:
+                    fetch_traffic(r)
+                    traffic_count += 1
+                    time.sleep(0.05)
+        console.print(
+            f"[dim]traffic 采集：{traffic_count}/{len(repos)} 个仓库（{args.traffic_since_days} 天内有更新）[/dim]"
+        )
         if not any(r.traffic_available for r in repos):
             show_traffic = False
             show_traffic_full = False
