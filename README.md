@@ -68,6 +68,13 @@ dev-stats/
 - 社区健康分对 fork 仓库返回 404（GitHub 限制），表格自动显示 `-`。
 - 近 4 周提交数基于 Link header 分页计数（per_page=1），为 GitHub 端精确值，非估算。
 
+## 隐私与合规
+
+- **CSV 默认脱敏**：`--csv` 导出默认不含 `clones_14d` / `views_14d` / `top_paths` / `top_referrers` 等非公开 traffic 数据。需本地使用时加 `--include-traffic`，导出的文件请勿公开分享。
+- **思否抓取默认禁用**：`dev-stats segmentfault` 需在 `.env` 中设置 `SEGMENTFAULT_ENABLED=true` 才启用，公开部署请勿开启。
+- **Token 不入库**：`.env`（含 `GITHUB_TOKEN` / `JUEJIN_USER_ID` / 本地路径）已被 `.gitignore` 排除；`stats.csv` 同样不入库。
+- **提交身份**：git config 使用 GitHub noreply 邮箱，不暴露真实邮箱。
+
 ## 开发
 
 常用任务已收敛到 Makefile（`make` 或 `make help` 查看全部目标）：

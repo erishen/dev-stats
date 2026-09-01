@@ -86,6 +86,18 @@ def test_export_csv_roundtrip(tmp_path, sample_repos):
         rows = list(csv.DictReader(f))
     assert len(rows) == 4
     assert rows[0]["name"] == "alpha"
+    # 默认不含 traffic 非公开字段（脱敏）
+    assert "clones_total_14d" not in rows[0]
+    assert "views_total_14d" not in rows[0]
+
+
+def test_export_csv_include_traffic(tmp_path, sample_repos):
+    path = tmp_path / "out.csv"
+    export_csv(sample_repos, str(path), include_traffic=True)
+    with open(path, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 4
+    assert rows[0]["name"] == "alpha"
     assert rows[0]["clones_total_14d"] == "100"
     # 缺失流量写入空值（None -> 空字符串）
     charlie = next(r for r in rows if r["name"] == "charlie")

@@ -48,7 +48,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-user-info", action="store_true", help="不显示账号信息行（followers/关注/仓库数/注册年份）"
     )
-    parser.add_argument("--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径")
+    parser.add_argument(
+        "--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径（默认不含 traffic 非公开数据）"
+    )
+    parser.add_argument(
+        "--include-traffic", action="store_true", help="CSV 导出包含 clone/views 流量数据（非公开，仅本地分享时使用）"
+    )
     parser.add_argument("--token", default=None, help="手动指定 GitHub token（默认自动读取 gh CLI / 环境变量）")
     return parser
 
@@ -171,8 +176,10 @@ def _daily_views(view_count: int | None, publish_time: str, today: date | None =
     return view_count / days
 
 
-def export_csv(repos: list[RepoStats], path: str) -> None:
-    fields = [
+def export_csv(repos: list[RepoStats], path: str, include_traffic: bool = False) -> None:
+    """导出仓库统计到 CSV。默认不含 clone/views 等非公开 traffic 数据；
+    加 include_traffic=True 才包含（仅本地分享时使用，勿公开）。"""
+    base_fields = [
         "name",
         "full_name",
         "private",
@@ -195,53 +202,60 @@ def export_csv(repos: list[RepoStats], path: str) -> None:
         "has_code_of_conduct",
         "commits_4w",
         "latest_release",
+        "pushed_at",
+        "language",
+    ]
+    traffic_fields = [
         "clones_total_14d",
         "cloners_14d",
         "views_total_14d",
         "viewers_14d",
         "top_paths",
         "top_referrers",
-        "pushed_at",
-        "language",
     ]
+    fields = base_fields + (traffic_fields if include_traffic else [])
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         for r in repos:
-            writer.writerow(
-                {
-                    "name": r.name,
-                    "full_name": r.full_name,
-                    "private": r.private,
-                    "fork": r.fork,
-                    "stars": r.stars,
-                    "forks": r.forks,
-                    "open_issues": r.open_issues,
-                    "size_kb": r.size_kb,
-                    "license": r.license,
-                    "archived": r.archived,
-                    "topics": ";".join(r.topics),
-                    "default_branch": r.default_branch,
-                    "created_at": r.created_at,
-                    "homepage": r.homepage,
-                    "subscribers": r.subscribers,
-                    "community_health": r.community_health,
-                    "has_readme": r.community_files.get("readme"),
-                    "has_contributing": r.community_files.get("contributing"),
-                    "has_license": r.community_files.get("license"),
-                    "has_code_of_conduct": r.community_files.get("code_of_conduct"),
-                    "commits_4w": r.commits_4w,
-                    "latest_release": r.latest_release,
-                    "clones_total_14d": r.clones_total,
-                    "cloners_14d": r.clones_uniques,
-                    "views_total_14d": r.views_total,
-                    "viewers_14d": r.views_uniques,
-                    "top_paths": r.top_paths,
-                    "top_referrers": r.top_referrers,
-                    "pushed_at": r.updated_at,
-                    "language": r.language,
-                }
-            )
+            row = {
+                "name": r.name,
+                "full_name": r.full_name,
+                "private": r.private,
+                "fork": r.fork,
+                "stars": r.stars,
+                "forks": r.forks,
+                "open_issues": r.open_issues,
+                "size_kb": r.size_kb,
+                "license": r.license,
+                "archived": r.archived,
+                "topics": ";".join(r.topics),
+                "default_branch": r.default_branch,
+                "created_at": r.created_at,
+                "homepage": r.homepage,
+                "subscribers": r.subscribers,
+                "community_health": r.community_health,
+                "has_readme": r.community_files.get("readme"),
+                "has_contributing": r.community_files.get("contributing"),
+                "has_license": r.community_files.get("license"),
+                "has_code_of_conduct": r.community_files.get("code_of_conduct"),
+                "commits_4w": r.commits_4w,
+                "latest_release": r.latest_release,
+                "pushed_at": r.updated_at,
+                "language": r.language,
+            }
+            if include_traffic:
+                row.update(
+                    {
+                        "clones_total_14d": r.clones_total,
+                        "cloners_14d": r.clones_uniques,
+                        "views_total_14d": r.views_total,
+                        "viewers_14d": r.views_uniques,
+                        "top_paths": r.top_paths,
+                        "top_referrers": r.top_referrers,
+                    }
+                )
+            writer.writerow({k: row.get(k, "") for k in fields})
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -355,8 +369,12 @@ def main(argv: list[str] | None = None) -> int:
             console.print("[dim]提示：clone/views 数据仅对本人管理的仓库可见，他人仓库只显示公开指标。[/dim]")
 
     if args.csv:
-        export_csv(repos, args.csv)
+        export_csv(repos, args.csv, include_traffic=args.include_traffic)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
+        if not args.include_traffic:
+            console.print(
+                "[dim]提示：CSV 默认不含 clone/views 流量数据，加 --include-traffic 可包含（非公开数据，慎分享）[/dim]"
+            )
     if client.rate_remaining is not None and client.rate_remaining < 500:
         console.print(
             f"[yellow][WARNING] GitHub API rate remaining low: "
@@ -856,6 +874,13 @@ def export_segmentfault_csv(posts, path: str, art_repos: dict | None = None) -> 
 
 
 def run_segmentfault(argv: list[str]) -> int:
+    if not os.environ.get("SEGMENTFAULT_ENABLED"):
+        console = Console()
+        console.print(
+            "[yellow]思否抓取功能默认禁用（本地个人使用，公开部署请勿启用）。[/yellow]\n"
+            "在 .env 中设置 SEGMENTFAULT_ENABLED=true 后启用。"
+        )
+        return 0
     args = build_segmentfault_parser().parse_args(argv)
     console = Console()
     ids = []
