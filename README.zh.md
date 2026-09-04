@@ -112,6 +112,7 @@ make csv        # 导出自己的仓库统计到 output/stats.csv（按 clones �
 make juejin     # 查掘金文章数据（默认按日均阅读排序）
 make segmentfault # 查思否文章数据（默认按日均阅读排序，需 SEGMENTFAULT_ENABLED=true）
 make report     # 汇总掘金 + 思否跨平台对比（默认按总日均阅读排序）
+make actions    # 巡检各仓库 CI 状态（--actions，失败自动带出失败步骤与报错）
 ```
 
 ## License

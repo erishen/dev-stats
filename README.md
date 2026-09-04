@@ -112,6 +112,7 @@ make csv        # Export your repo stats to output/stats.csv (sorted by clones d
 make juejin     # Query Juejin article metrics (default sort by daily avg views)
 make segmentfault # Query SegmentFault article metrics (default sort by daily avg views, requires SEGMENTFAULT_ENABLED=true)
 make report     # Aggregate Juejin + SegmentFault cross-platform comparison (default sort by total daily avg views)
+make actions    # Patrol CI status across repos (--actions, failures include failed step + error)
 ```
 
 ## License

@@ -1,4 +1,4 @@
-.PHONY: help sync run test lint lint-fix fmt check csv juejin segmentfault report clean
+.PHONY: help sync run test lint lint-fix fmt check csv juejin segmentfault report actions clean
 
 # 默认目标：从带 ## 注释的行提取并列出所有可用命令
 help:
@@ -45,6 +45,11 @@ segmentfault: ## 查思否文章阅读/访客/点赞/收藏/评论（默认 --so
 
 report: ## 汇总掘金 + 思否，按母文章合并对比（默认 --sort daily，可 ARGS 覆盖）
 	uv run dev-stats report $(if $(ARGS),$(ARGS),--sort daily)
+
+# CI 巡检：默认排除 fork、按最近推送排序（先看最近活跃仓库的 CI 是否挂了），
+# 失败仓库自动带出失败步骤与报错注解；可 ARGS 覆盖，如 make actions ARGS="--limit 20"
+actions: ## 巡检各仓库 CI 状态（--actions，默认排除 fork 按最近推送排序，可 ARGS 覆盖）
+	uv run dev-stats --actions --no-forks --sort updated $(if $(ARGS),$(ARGS))
 
 # 遵守"不永久删除"约定：缓存与构建产物一律移进废纸篓（可恢复），不用 rm -rf
 clean: ## 将测试/格式缓存与构建产物移入废纸篓
