@@ -61,6 +61,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--activity", action="store_true", help="拉取活跃度：近 4 周提交数 + 最新 release（每仓库 1-2 请求）"
     )
     parser.add_argument(
+        "--actions", action="store_true", help="拉取最新一次 GitHub Actions 运行状态（成功/失败/运行中，每仓库 1 请求）"
+    )
+    parser.add_argument(
         "--no-user-info", action="store_true", help="不显示账号信息行（followers/关注/仓库数/注册年份）"
     )
     parser.add_argument(
@@ -98,6 +101,7 @@ def render_table(
     show_community: bool = False,
     show_activity: bool = False,
     show_traffic_full: bool = False,
+    show_actions: bool = False,
 ) -> Table:
     table = Table(title=f"{user} 的 GitHub 仓库统计（clone/views 为近 14 天数据）", title_style="bold cyan")
     table.add_column("仓库", overflow="fold")
@@ -120,6 +124,8 @@ def render_table(
     if show_activity:
         table.add_column("4w提交", justify="right")
         table.add_column("Release")
+    if show_actions:
+        table.add_column("CI")
     table.add_column("最近推送")
     table.add_column("语言")
 
@@ -138,6 +144,8 @@ def render_table(
             row += [UNAVAILABLE if r.community_health is None else f"{r.community_health}"]
         if show_activity:
             row += [_fmt(r.commits_4w), r.latest_release or UNAVAILABLE]
+        if show_actions:
+            row += [_fmt_actions(r)]
         row += [r.updated_at or UNAVAILABLE, r.language or UNAVAILABLE]
         table.add_row(*row)
 
@@ -156,6 +164,20 @@ def _fmt_size(size_kb: int | None) -> str:
     if size_kb >= 1024:
         return f"{size_kb / 1024:.1f}M"
     return f"{size_kb}K"
+
+
+def _fmt_actions(r: RepoStats) -> str:
+    """渲染 CI 列：未采集/无 workflow 为 -；运行中青色；成功绿、失败红、取消黄。"""
+    if r.actions_status is None and r.actions_conclusion is None:
+        return UNAVAILABLE
+    if r.actions_status in ("in_progress", "queued", "waiting", "pending"):
+        return f"[cyan]● {r.actions_status}[/cyan]"
+    conclusion = r.actions_conclusion or "unknown"
+    style = {"success": "green", "failure": "red", "timed_out": "red", "startup_failure": "red"}.get(
+        conclusion, "yellow"
+    )
+    mark = "✓" if conclusion == "success" else ("✗" if style == "red" else "○")
+    return f"[{style}]{mark} {conclusion}[/]"
 
 
 def _fmt(value: int | None) -> str:
@@ -217,6 +239,10 @@ def export_csv(repos: list[RepoStats], path: str, include_traffic: bool = False)
         "has_code_of_conduct",
         "commits_4w",
         "latest_release",
+        "actions_workflow",
+        "actions_status",
+        "actions_conclusion",
+        "actions_at",
         "pushed_at",
         "language",
     ]
@@ -256,6 +282,10 @@ def export_csv(repos: list[RepoStats], path: str, include_traffic: bool = False)
                 "has_code_of_conduct": r.community_files.get("code_of_conduct"),
                 "commits_4w": r.commits_4w,
                 "latest_release": r.latest_release,
+                "actions_workflow": r.actions_workflow,
+                "actions_status": r.actions_status,
+                "actions_conclusion": r.actions_conclusion,
+                "actions_at": r.actions_at,
                 "pushed_at": r.updated_at,
                 "language": r.language,
             }
@@ -362,6 +392,11 @@ def main(argv: list[str] | None = None) -> int:
             for r in repos:
                 client.fetch_commit_count(r, since)
                 client.fetch_latest_release(r)
+    if args.actions:
+        with console.status("采集最新 GitHub Actions 运行状态…"):
+            for r in repos:
+                client.fetch_latest_action(r)
+                time.sleep(0.05)
 
     console.print(
         render_table(
@@ -372,6 +407,7 @@ def main(argv: list[str] | None = None) -> int:
             show_community=args.community,
             show_activity=args.activity,
             show_traffic_full=show_traffic_full,
+            show_actions=args.actions,
         )
     )
 

@@ -65,6 +65,11 @@ class RepoStats:
     # 活跃度（--activity，每仓库 1-2 请求）
     commits_4w: int | None = None  # 近 4 周提交数（基于 Link header 估算）
     latest_release: str | None = None  # 最新 release tag
+    # CI 状态（--actions，/actions/runs，公开，每仓库 1 请求）
+    actions_status: str | None = None  # latest run: queued / in_progress / completed
+    actions_conclusion: str | None = None  # latest run: success / failure / cancelled / ...
+    actions_workflow: str | None = None  # 触发该次运行的 workflow 名称
+    actions_at: str | None = None  # 该次运行开始时间（YYYY-MM-DD）
     # 完整流量（--traffic-full，需管理员权限）
     top_paths: str | None = None  # 近 14 天热门路径摘要
     top_referrers: str | None = None  # 近 14 天流量来源摘要
@@ -288,3 +293,15 @@ class GitHubClient:
         data = self.get(f"/repos/{repo.full_name}/releases/latest")
         if isinstance(data, dict):
             repo.latest_release = data.get("tag_name") or None
+
+    def fetch_latest_action(self, repo: RepoStats) -> None:
+        """拉取最新一次 GitHub Actions 运行状态（公开，每仓库 1 请求，无 workflow 时 404 保持 None）。"""
+        data = self.get(f"/repos/{repo.full_name}/actions/runs", per_page=1)
+        runs = data.get("workflow_runs") if isinstance(data, dict) else None
+        if not runs or not isinstance(runs[0], dict):
+            return
+        run = runs[0]
+        repo.actions_status = run.get("status") or None
+        repo.actions_conclusion = run.get("conclusion") or None
+        repo.actions_workflow = run.get("name") or None
+        repo.actions_at = (run.get("run_started_at") or run.get("created_at") or "")[:10] or None

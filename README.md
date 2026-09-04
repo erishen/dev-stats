@@ -9,6 +9,7 @@ A CLI tool for observing metrics across GitHub repositories and content platform
 - **L2 Repo details** (`--detail`, public): size, License, topics, archived status, default branch, created at, homepage, subscribers
 - **L3 Community health** (`--community`, public): health score 0-100 + README/license/code-of-conduct file completeness
 - **L4 Activity** (`--activity`, public): commits in last 4 weeks, latest release
+- **L5 CI status** (`--actions`, public): latest GitHub Actions run conclusion per repo (✓ success / ✗ failure / ● running, `-` when no workflows)
 - **Account info**: followers / following / public repos / account age (`--no-user-info` to disable)
 - **Auth**: auto-reuses `gh auth token`, falls back to `GITHUB_TOKEN` / `GH_TOKEN` env vars, or `--token` flag; supports `.env` file (copy `.env.example` to `.env`, gitignored)
 - **Output**: rich terminal tables + summary row; `--csv` exports details (sanitized by default, no non-public traffic data)
@@ -29,6 +30,9 @@ uv run dev-stats --sort clones --no-forks --limit 10
 
 # Per-repo deep metrics: details + community health + activity (--limit also caps fetch volume)
 uv run dev-stats --no-forks --limit 10 --detail --community --activity
+
+# Identify CI status: whether the latest GitHub Actions run succeeded per repo
+uv run dev-stats --no-forks --limit 10 --actions
 
 # Full traffic: top paths + referrers (requires own repos + admin access)
 uv run dev-stats --no-forks --limit 10 --traffic-full
@@ -84,7 +88,7 @@ dev-stats/
 
 - **Clone data is only visible to repo admins**: `/traffic/clones` only works for repos you have access to, with only 14-day data and no cumulative totals. When querying others' repos, the table automatically falls back to public metrics.
 - Unauthenticated rate limit: 60 req/hour; authenticated with gh token (`repo` scope): 5000 req/hour.
-- **Deep metrics are per-repo requests**: `--detail` / `--community` each add +1 request/repo, `--activity` adds +1~2 requests/repo. Large accounts should use `--limit` to cap fetch volume, or `--no-traffic` to skip traffic.
+- **Deep metrics are per-repo requests**: `--detail` / `--community` each add +1 request/repo, `--activity` adds +1~2 requests/repo, `--actions` adds +1 request/repo. Large accounts should use `--limit` to cap fetch volume, or `--no-traffic` to skip traffic.
 - Community health score returns 404 for fork repos (GitHub limitation), table shows `-` automatically.
 - Commits in last 4 weeks is counted via Link header pagination (per_page=1), an exact GitHub-side value, not an estimate.
 - Traffic fetch loop has a built-in 50ms delay to prevent secondary rate limiting; a warning is printed when remaining API quota drops below 500.
@@ -102,7 +106,7 @@ dev-stats/
 Common tasks are consolidated in the Makefile (`make` or `make help` to see all targets):
 
 ```bash
-make check      # ruff lint + format check + 42 offline unit tests, all in one
+make check      # ruff lint + format check + offline unit tests, all in one
 make run ARGS="--sort clones"   # Run CLI with pass-through args
 make csv        # Export your repo stats to output/stats.csv (sorted by clones desc, sanitized by default)
 make juejin     # Query Juejin article metrics (default sort by daily avg views)

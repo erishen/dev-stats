@@ -308,3 +308,93 @@ def test_export_csv_has_new_columns(tmp_path, sample_repos):
     assert first["topics"] == "ai"
     assert first["community_health"] == "90"
     assert first["commits_4w"] == "12"
+
+
+# ---- --actions 指标层：最新 workflow run 状态 ----
+
+
+def test_fetch_latest_action_populates_fields(monkeypatch):
+    client = GitHubClient(token=None)
+    repo = make_repo("alpha")
+    monkeypatch.setattr(
+        client,
+        "get",
+        lambda path, **kw: {
+            "total_count": 3,
+            "workflow_runs": [
+                {
+                    "name": "CI",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "run_started_at": "2026-09-03T10:00:00Z",
+                    "created_at": "2026-09-03T10:00:01Z",
+                }
+            ],
+        },
+    )
+    client.fetch_latest_action(repo)
+    assert repo.actions_status == "completed"
+    assert repo.actions_conclusion == "success"
+    assert repo.actions_workflow == "CI"
+    assert repo.actions_at == "2026-09-03"  # run_started_at 优先于 created_at
+
+
+def test_fetch_latest_action_failure_and_running(monkeypatch):
+    client = GitHubClient(token=None)
+
+    repo_fail = make_repo("bravo")
+    monkeypatch.setattr(
+        client,
+        "get",
+        lambda path, **kw: {"workflow_runs": [{"name": "test", "status": "completed", "conclusion": "failure"}]},
+    )
+    client.fetch_latest_action(repo_fail)
+    assert repo_fail.actions_conclusion == "failure"
+
+    repo_run = make_repo("charlie")
+    monkeypatch.setattr(
+        client,
+        "get",
+        lambda path, **kw: {"workflow_runs": [{"name": "CI", "status": "in_progress", "conclusion": None}]},
+    )
+    client.fetch_latest_action(repo_run)
+    assert repo_run.actions_status == "in_progress"
+    assert repo_run.actions_conclusion is None
+
+
+def test_fetch_latest_action_404_or_empty_keeps_none(monkeypatch):
+    client = GitHubClient(token=None)
+    repo = make_repo("alpha")
+    monkeypatch.setattr(client, "get", lambda path, **kw: None)  # 无 workflow -> 404
+    client.fetch_latest_action(repo)
+    assert repo.actions_status is None and repo.actions_conclusion is None
+
+    repo2 = make_repo("bravo")
+    monkeypatch.setattr(client, "get", lambda path, **kw: {"workflow_runs": []})
+    client.fetch_latest_action(repo2)
+    assert repo2.actions_status is None and repo2.actions_conclusion is None
+
+
+def test_render_table_actions_column(sample_repos):
+    sample_repos[0].actions_status = "completed"
+    sample_repos[0].actions_conclusion = "success"
+    sample_repos[1].actions_status = "in_progress"
+    sample_repos[1].actions_conclusion = None
+    table = render_table(sample_repos, "erishen", show_traffic=True, show_actions=True)
+    headers = [c.header for c in table.columns]
+    assert "CI" in headers
+
+
+def test_export_csv_actions_columns(tmp_path, sample_repos):
+    path = tmp_path / "out.csv"
+    sample_repos[0].actions_workflow = "CI"
+    sample_repos[0].actions_status = "completed"
+    sample_repos[0].actions_conclusion = "failure"
+    sample_repos[0].actions_at = "2026-09-03"
+    export_csv(sample_repos, str(path))
+    with open(path, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    first = rows[0]
+    assert first["actions_workflow"] == "CI"
+    assert first["actions_conclusion"] == "failure"
+    assert first["actions_at"] == "2026-09-03"
