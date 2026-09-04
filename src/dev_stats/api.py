@@ -70,6 +70,9 @@ class RepoStats:
     actions_conclusion: str | None = None  # latest run: success / failure / cancelled / ...
     actions_workflow: str | None = None  # 触发该次运行的 workflow 名称
     actions_at: str | None = None  # 该次运行开始时间（YYYY-MM-DD）
+    # CI 失败详情（仅失败 run 追加，每失败仓库 +1~2 请求：jobs + annotations）
+    actions_failed_jobs: str | None = None  # 摘要 "job: 失败step"，多 job 用 ; 连接
+    actions_errors: str | None = None  # 注解报错消息摘要（前 2 条，各截 80 字符）
     # 完整流量（--traffic-full，需管理员权限）
     top_paths: str | None = None  # 近 14 天热门路径摘要
     top_referrers: str | None = None  # 近 14 天流量来源摘要
@@ -295,7 +298,10 @@ class GitHubClient:
             repo.latest_release = data.get("tag_name") or None
 
     def fetch_latest_action(self, repo: RepoStats) -> None:
-        """拉取最新一次 GitHub Actions 运行状态（公开，每仓库 1 请求，无 workflow 时 404 保持 None）。"""
+        """拉取最新一次 GitHub Actions 运行状态（公开，每仓库 1 请求，无 workflow 时 404 保持 None）。
+
+        失败 run 追加采集失败步骤与报错注解（每失败仓库 +1~2 请求）。
+        """
         data = self.get(f"/repos/{repo.full_name}/actions/runs", per_page=1)
         runs = data.get("workflow_runs") if isinstance(data, dict) else None
         if not runs or not isinstance(runs[0], dict):
@@ -305,3 +311,42 @@ class GitHubClient:
         repo.actions_conclusion = run.get("conclusion") or None
         repo.actions_workflow = run.get("name") or None
         repo.actions_at = (run.get("run_started_at") or run.get("created_at") or "")[:10] or None
+        if repo.actions_conclusion not in ("failure", "timed_out", "startup_failure"):
+            return
+        self._fetch_action_failure_detail(repo, run.get("id"))
+
+    def _fetch_action_failure_detail(self, repo: RepoStats, run_id) -> None:
+        """采集失败 run 的失败 job/step 与注解报错（公开数据，+1~2 请求）。"""
+        if not run_id:
+            return
+        jobs = self.get(f"/repos/{repo.full_name}/actions/runs/{run_id}/jobs", per_page=100)
+        if not isinstance(jobs, dict):
+            return
+        failed = [j for j in jobs.get("jobs") or [] if isinstance(j, dict) and j.get("conclusion") == "failure"]
+        if not failed:
+            return
+        parts = []
+        for j in failed:
+            failed_steps = [
+                s.get("name")
+                for s in (j.get("steps") or [])
+                if isinstance(s, dict) and s.get("conclusion") == "failure"
+            ]
+            label = j.get("name") or "?"
+            parts.append(f"{label}: {failed_steps[0]}" if failed_steps else label)
+        repo.actions_failed_jobs = "; ".join(parts)
+        # 注解报错：取第一个失败 job 的 check-run 注解（最多 2 条，各截 80 字符）
+        check_run_url = failed[0].get("check_run_url") or ""
+        check_run_id = check_run_url.rstrip("/").rsplit("/", 1)[-1]
+        if not check_run_id.isdigit():
+            return
+        anns = self.get(f"/repos/{repo.full_name}/check-runs/{check_run_id}/annotations")
+        if not isinstance(anns, list):
+            return
+        msgs = []
+        for a in anns:
+            if isinstance(a, dict) and a.get("annotation_level") == "failure" and a.get("message"):
+                msgs.append(a["message"][:80])
+            if len(msgs) >= 2:
+                break
+        repo.actions_errors = "; ".join(msgs) or None

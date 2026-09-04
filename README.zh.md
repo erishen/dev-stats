@@ -9,7 +9,7 @@
 - **L2 仓库详情**（`--detail`，公开）：体积、License、topics、归档状态、默认分支、创建时间、主页、订阅者
 - **L3 社区健康**（`--community`，公开）：健康分 0-100 + README/许可/行为准则等文件齐全度
 - **L4 活跃度**（`--activity`，公开）：近 4 周提交数、最新 release
-- **L5 CI 状态**（`--actions`，公开）：各仓库最新一次 GitHub Actions 运行结论（✓ success / ✗ failure / ● 运行中，无 workflow 显示 `-`）
+- **L5 CI 状态**（`--actions`，公开）：各仓库最新一次 GitHub Actions 运行结论（✓ success / ✗ failure / ● 运行中，无 workflow 显示 `-`）；**失败 run 自动追加采集失败步骤与报错注解**（仅失败仓库 +1~2 请求），展示哪个 job/step 挂了、GitHub 注解的错误消息
 - **账号信息**：关注者 / 关注 / 公开仓库数 / 注册年份（`--no-user-info` 关闭）
 - **认证**：自动复用 `gh auth token`，其次读 `GITHUB_TOKEN` / `GH_TOKEN` 环境变量，也可 `--token` 传入；支持 `.env` 文件配置（复制 `.env.example` 为 `.env` 填入，已 gitignore 不入库）
 - **输出**：rich 终端表格 + 汇总行；`--csv` 导出明细（默认脱敏，不含 traffic 非公开数据）
@@ -88,7 +88,7 @@ dev-stats/
 
 - **clone 数据仅仓库管理员可见**：`/traffic/clones` 只能查自己有权限的仓库，且只有近 14 天数据、无累计值。查询他人仓库时表格自动降级为公开指标。
 - 未认证时匿名限流 60 次/小时；gh token（`repo` scope）认证后 5000 次/小时。
-- **新增指标为逐仓库请求**：`--detail` / `--community` 各 +1 请求/仓库，`--activity` +1~2 请求/仓库，`--actions` +1 请求/仓库。大账号务必配 `--limit` 控制采集量，或 `--no-traffic` 跳过流量。
+- **新增指标为逐仓库请求**：`--detail` / `--community` 各 +1 请求/仓库，`--activity` +1~2 请求/仓库，`--actions` +1 请求/仓库（CI 失败的仓库再 +1~2 请求拉失败详情）。大账号务必配 `--limit` 控制采集量，或 `--no-traffic` 跳过流量。
 - 社区健康分对 fork 仓库返回 404（GitHub 限制），表格自动显示 `-`。
 - 近 4 周提交数基于 Link header 分页计数（per_page=1），为 GitHub 端精确值，非估算。
 - 流量采集循环内置 50ms 延迟，防止次级速率限制；API 剩余配额低于 500 时打印预警。

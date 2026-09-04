@@ -126,6 +126,7 @@ def render_table(
         table.add_column("Release")
     if show_actions:
         table.add_column("CI")
+        table.add_column("CI 失败详情", overflow="fold", max_width=48)
     table.add_column("最近推送")
     table.add_column("语言")
 
@@ -146,6 +147,8 @@ def render_table(
             row += [_fmt(r.commits_4w), r.latest_release or UNAVAILABLE]
         if show_actions:
             row += [_fmt_actions(r)]
+            detail = r.actions_errors or r.actions_failed_jobs or UNAVAILABLE
+            row += [detail if r.actions_conclusion in ("failure", "timed_out", "startup_failure") else UNAVAILABLE]
         row += [r.updated_at or UNAVAILABLE, r.language or UNAVAILABLE]
         table.add_row(*row)
 
@@ -243,6 +246,8 @@ def export_csv(repos: list[RepoStats], path: str, include_traffic: bool = False)
         "actions_status",
         "actions_conclusion",
         "actions_at",
+        "actions_failed_jobs",
+        "actions_errors",
         "pushed_at",
         "language",
     ]
@@ -286,6 +291,8 @@ def export_csv(repos: list[RepoStats], path: str, include_traffic: bool = False)
                 "actions_status": r.actions_status,
                 "actions_conclusion": r.actions_conclusion,
                 "actions_at": r.actions_at,
+                "actions_failed_jobs": r.actions_failed_jobs,
+                "actions_errors": r.actions_errors,
                 "pushed_at": r.updated_at,
                 "language": r.language,
             }

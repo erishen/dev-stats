@@ -362,6 +362,60 @@ def test_fetch_latest_action_failure_and_running(monkeypatch):
     assert repo_run.actions_conclusion is None
 
 
+def test_fetch_latest_action_success_skips_failure_detail(monkeypatch):
+    """回归：成功 run 不应额外请求 jobs/annotations（省 API 配额）。"""
+    client = GitHubClient(token=None)
+    repo = make_repo("alpha")
+    calls: list[str] = []
+
+    def fake_get(path, **kw):
+        calls.append(path)
+        return {"workflow_runs": [{"name": "CI", "status": "completed", "conclusion": "success", "id": 1}]}
+
+    monkeypatch.setattr(client, "get", fake_get)
+    client.fetch_latest_action(repo)
+    assert repo.actions_conclusion == "success"
+    assert all("/jobs" not in p and "annotations" not in p for p in calls)
+
+
+def test_fetch_latest_action_failure_detail(monkeypatch):
+    """失败 run 追加采集：失败 job:step 摘要 + 注解报错（截断、过滤非 failure 级别）。"""
+    client = GitHubClient(token=None)
+    repo = make_repo("nsgm")
+
+    def fake_get(path, **kw):
+        if path.endswith("/actions/runs"):
+            return {"workflow_runs": [{"name": "CI", "status": "completed", "conclusion": "failure", "id": 42}]}
+        if "/actions/runs/42/jobs" in path:
+            return {
+                "jobs": [
+                    {
+                        "name": "test",
+                        "conclusion": "failure",
+                        "steps": [
+                            {"name": "Setup", "conclusion": "success"},
+                            {"name": "Run tests", "conclusion": "failure"},
+                        ],
+                        "check_run_url": "https://api.github.com/repos/erishen/nsgm/check-runs/999",
+                    },
+                    {"name": "lint", "conclusion": "success"},
+                ]
+            }
+        if "/check-runs/999/annotations" in path:
+            return [
+                {"annotation_level": "failure", "message": "AssertionError: expected 200 got 500 " + "x" * 100},
+                {"annotation_level": "warning", "message": "should be ignored"},
+            ]
+        return None
+
+    monkeypatch.setattr(client, "get", fake_get)
+    client.fetch_latest_action(repo)
+    assert repo.actions_failed_jobs == "test: Run tests"
+    assert repo.actions_errors.startswith("AssertionError")
+    assert len(repo.actions_errors) <= 80  # 单条截断
+    assert "ignored" not in repo.actions_errors  # 非 failure 级别注解被过滤
+
+
 def test_fetch_latest_action_404_or_empty_keeps_none(monkeypatch):
     client = GitHubClient(token=None)
     repo = make_repo("alpha")
