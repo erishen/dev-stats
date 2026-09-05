@@ -34,6 +34,9 @@ uv run dev-stats --no-forks --limit 10 --detail --community --activity
 # 识别各仓库 CI 状态：最新一次 GitHub Actions 是否成功
 uv run dev-stats --no-forks --limit 10 --actions
 
+# 排除指定仓库（老仓的历史 CI 噪音，如已停维护项目的 Dependabot 失败记录）
+uv run dev-stats --no-forks --actions --exclude wildsKick,king-power
+
 # 完整流量：热门路径 + 流量来源（需本人仓库 + 管理员权限）
 uv run dev-stats --no-forks --limit 10 --traffic-full
 
@@ -112,7 +115,7 @@ make csv        # 导出自己的仓库统计到 output/stats.csv（按 clones �
 make juejin     # 查掘金文章数据（默认按日均阅读排序）
 make segmentfault # 查思否文章数据（默认按日均阅读排序，需 SEGMENTFAULT_ENABLED=true）
 make report     # 汇总掘金 + 思否跨平台对比（默认按总日均阅读排序）
-make actions    # 巡检各仓库 CI 状态（--actions，失败自动带出失败步骤与报错）
+make actions    # 巡检各仓库 CI 状态（--actions，默认排除老仓 CI 噪音，失败自动带出失败步骤与报错）
 ```
 
 ## License

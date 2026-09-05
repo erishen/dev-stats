@@ -34,6 +34,9 @@ uv run dev-stats --no-forks --limit 10 --detail --community --activity
 # Identify CI status: whether the latest GitHub Actions run succeeded per repo
 uv run dev-stats --no-forks --limit 10 --actions
 
+# Exclude specific repos (legacy CI noise, e.g. Dependabot failures on unmaintained projects)
+uv run dev-stats --no-forks --actions --exclude wildsKick,king-power
+
 # Full traffic: top paths + referrers (requires own repos + admin access)
 uv run dev-stats --no-forks --limit 10 --traffic-full
 
@@ -112,7 +115,7 @@ make csv        # Export your repo stats to output/stats.csv (sorted by clones d
 make juejin     # Query Juejin article metrics (default sort by daily avg views)
 make segmentfault # Query SegmentFault article metrics (default sort by daily avg views, requires SEGMENTFAULT_ENABLED=true)
 make report     # Aggregate Juejin + SegmentFault cross-platform comparison (default sort by total daily avg views)
-make actions    # Patrol CI status across repos (--actions, failures include failed step + error)
+make actions    # Patrol CI status across repos (--actions, excludes legacy CI noise by default, failures include failed step + error)
 ```
 
 ## License

@@ -72,6 +72,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--include-traffic", action="store_true", help="CSV 导出包含 clone/views 流量数据（非公开，仅本地分享时使用）"
     )
+    parser.add_argument(
+        "--exclude",
+        metavar="NAME[,NAME...]",
+        default=None,
+        help="排除指定仓库（逗号分隔，如 --exclude wildsKick,king-power；用于老仓的历史 CI 噪音）",
+    )
     parser.add_argument("--token", default=None, help="手动指定 GitHub token（默认自动读取 gh CLI / 环境变量）")
     return parser
 
@@ -343,6 +349,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.no_forks:
         repos = [r for r in repos if not r.fork]
+    if args.exclude:
+        excluded = {n.strip().lower() for n in args.exclude.split(",") if n.strip()}
+        repos = [r for r in repos if r.name.lower() not in excluded]
     if not args.include_private:
         # 查询自己时列表会包含私有仓库，默认隐藏（--include-private 展示）
         repos = [r for r in repos if not r.private]
