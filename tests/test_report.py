@@ -66,3 +66,57 @@ if __name__ == "__main__":
     import pytest
 
     pytest.main([__file__, "-q"])
+
+
+# ---------- run_report 降级逻辑（思未启用/失败不影响整体报告） ----------
+
+
+def test_run_report_degrades_when_sf_disabled(monkeypatch, capsys):
+    """SEGMENTFAULT_ENABLED 未设置时：不要求 sf_dir、跳过思否，仅掘金渲染，exit 0。"""
+    import dev_stats.cli as cli
+
+    class FakeJJClient:
+        def fetch_posts(self, user_id):
+            return [JuejinPost("9", "掘金独有", "2026-08-20", 100, 10.0, 1, 0)]
+
+    monkeypatch.setattr(cli, "JuejinClient", FakeJJClient)
+    monkeypatch.setenv("JUEJIN_USER_ID", "123")
+    monkeypatch.delenv("SEGMENTFAULT_ENABLED", raising=False)
+    monkeypatch.delenv("SEGMENTFAULT_ARTICLES_DIR", raising=False)
+    monkeypatch.delenv("JUEJIN_ARTICLES_DIR", raising=False)
+
+    rc = cli.run_report([])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "仅含掘金数据" in out
+    assert "掘金独有" in out
+
+
+def test_run_report_degrades_when_sf_fetch_fails(monkeypatch, capsys):
+    """思否启用但抓取整体失败：降级为仅掘金，exit 0。"""
+    import dev_stats.cli as cli
+
+    class FakeJJClient:
+        def fetch_posts(self, user_id):
+            return [JuejinPost("9", "掘金独有", "2026-08-20", 100, 10.0, 1, 0)]
+
+    class BrokenSFClient:
+        def __init__(self, session=None):
+            pass
+
+        def fetch_posts(self, ids):
+            raise RuntimeError("WAF 拦截")
+
+    monkeypatch.setattr(cli, "JuejinClient", FakeJJClient)
+    monkeypatch.setattr(cli, "SegmentFaultClient", BrokenSFClient)
+    monkeypatch.setenv("JUEJIN_USER_ID", "123")
+    monkeypatch.setenv("SEGMENTFAULT_ENABLED", "true")
+    monkeypatch.setenv("SEGMENTFAULT_ARTICLES_DIR", "/tmp/sf-articles")
+    monkeypatch.setenv("JUEJIN_ARTICLES_DIR", "")
+    monkeypatch.setattr(cli, "_scan_sf_wp", lambda d: {"9": "wp1"})
+
+    rc = cli.run_report([])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "降级为仅掘金" in out
+    assert "掘金独有" in out

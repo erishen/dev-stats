@@ -78,6 +78,47 @@ def test_fetch_posts_sequential():
     assert posts[1].view_count == 20
 
 
+class Fake404Resp:
+    def __init__(self):
+        self.status_code = 404
+        self.text = ""
+
+    def raise_for_status(self):
+        import requests
+
+        raise requests.HTTPError("404 Client Error", response=self)
+
+
+class FakeSessionWith404:
+    """第 2 篇返回 404（已删除），其余正常。"""
+
+    def __init__(self, pages):
+        self._pages = pages
+        self.calls = 0
+
+    def get(self, url, timeout=None):
+        self.calls += 1
+        if self.calls == 2:
+            return Fake404Resp()
+        return FakeResp(self._pages.pop(0))
+
+
+def test_fetch_posts_skips_deleted_404(capsys):
+    sess = FakeSessionWith404(
+        [
+            _page("1", "篇一", 10, 8, 1, 0, 0, "1600000000"),
+            _page("3", "篇三", 30, 25, 3, 1, 0, "1800000000"),
+        ]
+    )
+    posts = SegmentFaultClient(session=sess).fetch_posts(["1", "2", "3"])
+    # 404 被跳过，其余两篇正常返回
+    assert len(posts) == 2
+    assert [p.post_id for p in posts] == ["1", "3"]
+    err = capsys.readouterr().err
+    assert "已删除或不可见" in err
+    assert "2" in err
+
+
 def test_sort_sf_posts_by_views_with_missing_lowest():
     posts = [
         SegmentFaultPost("1", "a", "", 10, 5, 1, 0, 0, ""),

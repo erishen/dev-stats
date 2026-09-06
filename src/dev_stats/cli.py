@@ -778,11 +778,12 @@ def run_report(argv: list[str]) -> int:
     console = Console()
     user_id = os.environ.get("JUEJIN_USER_ID")
     sf_dir = os.environ.get("SEGMENTFAULT_ARTICLES_DIR")
+    sf_enabled = bool(os.environ.get("SEGMENTFAULT_ENABLED"))
     if not user_id:
         console.print("[red]未配置 JUEJIN_USER_ID（.env）。[/red]")
         return 2
-    if not sf_dir:
-        console.print("[red]未配置 SEGMENTFAULT_ARTICLES_DIR（.env）。[/red]")
+    if sf_enabled and not sf_dir:
+        console.print("[red]已启用思否抓取但未配置 SEGMENTFAULT_ARTICLES_DIR（.env）。[/red]")
         return 2
 
     try:
@@ -794,16 +795,24 @@ def run_report(argv: list[str]) -> int:
     if jj_dir:
         _match_juejin_wp(jj_posts, _scan_juejin_wp(jj_dir))
 
-    try:
-        wp_map = _scan_sf_wp(sf_dir)
-        sf_posts = SegmentFaultClient().fetch_posts(sorted(set(wp_map)))
-    except Exception as exc:
-        console.print(f"[red]拉取思否失败：{exc}[/red]")
-        return 1
-    for p in sf_posts:
-        p.wp_id = wp_map.get(p.post_id, "")
+    # 思否抓取默认禁用（SEGMENTFAULT_ENABLED）；未启用或抓取失败时降级为仅掘金报告，
+    # 不让单平台问题拖垮整体报告。
+    sf_posts: list = []
+    sf_note = ""
+    if not sf_enabled:
+        sf_note = "思否抓取未启用（.env 设置 SEGMENTFAULT_ENABLED=true），本报告仅含掘金数据。"
+    else:
+        try:
+            wp_map = _scan_sf_wp(sf_dir)
+            sf_posts = SegmentFaultClient().fetch_posts(sorted(set(wp_map)))
+            for p in sf_posts:
+                p.wp_id = wp_map.get(p.post_id, "")
+        except Exception as exc:
+            sf_note = f"思否数据拉取失败（{exc}），本报告降级为仅掘金数据。"
 
     rows = _merge_platform_posts(jj_posts, sf_posts)
+    if sf_note:
+        console.print(f"[yellow]{sf_note}[/yellow]")
     rows = sort_report_rows(rows, args.sort)
     if args.limit > 0:
         rows = rows[: args.limit]
