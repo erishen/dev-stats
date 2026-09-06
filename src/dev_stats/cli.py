@@ -75,6 +75,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径（默认不含 traffic 非公开数据）"
     )
     parser.add_argument(
+        "--no-html",
+        action="store_true",
+        help="导出 CSV 时不顺带生成 HTML 表格预览（默认会生成 <name>-preview.html）",
+    )
+    parser.add_argument(
         "--include-traffic", action="store_true", help="CSV 导出包含 clone/views 流量数据（非公开，仅本地分享时使用）"
     )
     parser.add_argument(
@@ -285,6 +290,127 @@ def _daily_views(view_count: int | None, publish_time: str, today: date | None =
     if days < 1:
         days = 1
     return view_count / days
+
+
+_PREVIEW_HTML_TEMPLATE = """<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__ 预览</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font: 13px/1.5 -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+         margin: 0; padding: 16px; background: #f6f7f9; color: #1f2328; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  .meta { color: #656d76; margin: 0 0 12px; font-size: 12px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  #filter { padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 6px; min-width: 240px; font-size: 13px; }
+  .count { color: #656d76; font-size: 12px; }
+  .wrap { overflow: auto; max-height: 78vh; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
+  table { border-collapse: collapse; width: max-content; min-width: 100%; }
+  thead th { position: sticky; top: 0; background: #eaeef2; text-align: left; padding: 8px 10px;
+             border-bottom: 2px solid #d0d7de; border-right: 1px solid #e4e8ec; cursor: pointer;
+             white-space: nowrap; user-select: none; font-weight: 600; }
+  thead th:hover { background: #dfe4ea; }
+  tbody td { padding: 6px 10px; border-bottom: 1px solid #eef1f4; border-right: 1px solid #f1f3f5;
+             white-space: nowrap; }
+  tbody tr:nth-child(even) { background: #fafbfc; }
+  tbody tr:hover { background: #eef5ff; }
+  th.sorted-asc::after { content: ' \\25B2'; font-size: 10px; }
+  th.sorted-desc::after { content: ' \\25BC'; font-size: 10px; }
+</style>
+</head>
+<body>
+  <h1>__TITLE__ 预览</h1>
+  <p class="meta">__META__</p>
+  <div class="toolbar">
+    <input id="filter" type="text" placeholder="过滤（匹配任意单元格）…" autofocus>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="wrap">
+    <table id="t">
+      <thead><tr>__HEAD__</tr></thead>
+      <tbody>__BODY__</tbody>
+    </table>
+  </div>
+<script>
+  const table = document.getElementById('t');
+  const tbody = table.tBodies[0];
+  const filter = document.getElementById('filter');
+  const count = document.getElementById('count');
+  let rows = Array.from(tbody.rows);
+  let sortCol = -1, sortDir = 1;
+  function render() {
+    const q = filter.value.trim().toLowerCase();
+    let visible = 0;
+    rows.forEach(r => {
+      const text = Array.from(r.cells).map(c => c.textContent.toLowerCase()).join(' ');
+      const ok = !q || text.includes(q);
+      r.style.display = ok ? '' : 'none';
+      if (ok) visible++;
+    });
+    count.textContent = q ? '（显示 ' + visible + ' / ' + rows.length + '）' : '（' + rows.length + ' 行）';
+  }
+  filter.addEventListener('input', render);
+  table.querySelectorAll('thead th').forEach((th, i) => {
+    th.addEventListener('click', () => {
+      if (sortCol === i) sortDir = -sortDir; else { sortCol = i; sortDir = 1; }
+      table.querySelectorAll('thead th').forEach(t => t.classList.remove('sorted-asc','sorted-desc'));
+      th.classList.add(sortDir === 1 ? 'sorted-asc' : 'sorted-desc');
+      rows.sort((a, b) => {
+        const av = a.cells[i].textContent.trim(), bv = b.cells[i].textContent.trim();
+        const an = parseFloat(av), bn = parseFloat(bv);
+        if (!isNaN(an) && !isNaN(bn)) return (an - bn) * sortDir;
+        return av.localeCompare(bv, 'zh') * sortDir;
+      });
+      rows.forEach(r => tbody.appendChild(r));
+    });
+  });
+  render();
+</script>
+</body>
+</html>
+"""
+
+
+def write_html_preview(csv_path: str, title: str | None = None) -> str | None:
+    """把导出的 CSV 渲染成可排序/可过滤的 HTML 表格预览，写到 <csv stem>-preview.html。
+    返回 HTML 文件路径；CSV 不可读时返回 None（预览失败不影响 CSV 导出本身）。"""
+    try:
+        import html as _html
+        from pathlib import Path
+
+        src = Path(csv_path)
+        out = src.with_name(src.stem + "-preview.html")
+        with open(src, newline="", encoding="utf-8") as f:
+            rows = list(csv.reader(f))
+        if len(rows) < 2:
+            return None
+        header, data = rows[0], rows[1:]
+
+        def esc(v):
+            return _html.escape("" if v is None else str(v))
+
+        head_cells = "".join(f"<th data-col='{i}'>{esc(h)}</th>" for i, h in enumerate(header))
+        body_rows = "\n".join("<tr>" + "".join(f"<td>{esc(c)}</td>" for c in r) + "</tr>" for r in data)
+        page_title = _html.escape(title or src.name)
+        meta = (
+            f"源文件：<code>{_html.escape(str(src))}</code> · {len(data)} 行 × "
+            f"{len(header)} 列 · 点击表头排序，输入关键字过滤"
+        )
+        doc = (
+            _PREVIEW_HTML_TEMPLATE.replace("__TITLE__", page_title)
+            .replace("__META__", meta)
+            .replace("__HEAD__", head_cells)
+            .replace("__BODY__", body_rows)
+        )
+        out.write_text(doc, encoding="utf-8")
+        return str(out)
+    except Exception as e:  # 预览生成失败不应阻断 CSV 导出
+        Console().print(f"[yellow][dev-stats] CSV 预览生成跳过：{e}[/yellow]")
+        return None
 
 
 def export_csv(repos: list[RepoStats], path: str, include_traffic: bool = False) -> None:
@@ -523,6 +649,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.csv:
         export_csv(repos, args.csv, include_traffic=args.include_traffic)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
+        if not args.no_html:
+            html_path = write_html_preview(args.csv)
+            if html_path:
+                console.print(f"[green]已生成 CSV 预览：{html_path}[/green]")
         if not args.include_traffic:
             console.print(
                 "[dim]提示：CSV 默认不含 clone/views 流量数据，加 --include-traffic 可包含（非公开数据，慎分享）[/dim]"
@@ -556,6 +686,11 @@ def build_juejin_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--limit", type=int, default=0, help="仅显示前 N 篇，0 表示全部")
     parser.add_argument("--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径")
+    parser.add_argument(
+        "--no-html",
+        action="store_true",
+        help="导出 CSV 时不顺带生成 HTML 表格预览（默认会生成 <name>-preview.html）",
+    )
     parser.add_argument(
         "--articles-dir",
         default=None,
@@ -718,6 +853,10 @@ def run_juejin(argv: list[str]) -> int:
     if args.csv:
         export_juejin_csv(posts, args.csv, art_repos)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
+        if not args.no_html:
+            html_path = write_html_preview(args.csv, title="掘金文章")
+            if html_path:
+                console.print(f"[green]已生成 CSV 预览：{html_path}[/green]")
     return 0
 
 
@@ -737,6 +876,11 @@ def build_report_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--limit", type=int, default=0, help="仅显示前 N 篇，0 表示全部")
     parser.add_argument("--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径")
+    parser.add_argument(
+        "--no-html",
+        action="store_true",
+        help="导出 CSV 时不顺带生成 HTML 表格预览（默认会生成 <name>-preview.html）",
+    )
     return parser
 
 
@@ -921,14 +1065,15 @@ def run_report(argv: list[str]) -> int:
     console.print(render_report_table(rows, art_repos))
     print_article_links(
         console,
-        [
-            (e["title"], " | ".join(x for x in (e.get("jj_url"), e.get("sf_url")) if x))
-            for e in rows
-        ],
+        [(e["title"], " | ".join(x for x in (e.get("jj_url"), e.get("sf_url")) if x)) for e in rows],
     )
     if args.csv:
         export_report_csv(rows, args.csv, art_repos)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
+        if not args.no_html:
+            html_path = write_html_preview(args.csv, title="文章汇总")
+            if html_path:
+                console.print(f"[green]已生成 CSV 预览：{html_path}[/green]")
     return 0
 
 
@@ -961,6 +1106,11 @@ def build_segmentfault_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--limit", type=int, default=0, help="仅显示前 N 篇，0 表示全部")
     parser.add_argument("--csv", metavar="PATH", default=None, help="导出 CSV 到指定路径")
+    parser.add_argument(
+        "--no-html",
+        action="store_true",
+        help="导出 CSV 时不顺带生成 HTML 表格预览（默认会生成 <name>-preview.html）",
+    )
     return parser
 
 
@@ -1122,4 +1272,8 @@ def run_segmentfault(argv: list[str]) -> int:
     if args.csv:
         export_segmentfault_csv(posts, args.csv, art_repos)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
+        if not args.no_html:
+            html_path = write_html_preview(args.csv, title="思否文章")
+            if html_path:
+                console.print(f"[green]已生成 CSV 预览：{html_path}[/green]")
     return 0

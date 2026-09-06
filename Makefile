@@ -31,7 +31,7 @@ check: ## 提交/收尾前一把梭：lint + 格式校验 + 测试
 	@$(MAKE) --no-print-directory test
 
 # output/ 已在 .gitignore 中（运行时数据导出，不入库）
-csv: ## 导出自己的仓库统计到 output/stats.csv（按 14 天 clone 数降序，默认脱敏不含流量）
+csv: ## 导出仓库统计到 output/stats.csv（按 14 天 clone 数降序，默认脱敏不含流量；同时生成可排序的 stats-preview.html）
 	mkdir -p output
 	uv run dev-stats --sort clones --csv output/stats.csv
 
