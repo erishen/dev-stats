@@ -120,3 +120,39 @@ def test_run_report_degrades_when_sf_fetch_fails(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "降级为仅掘金" in out
     assert "掘金独有" in out
+
+
+# ---------- 文章链接（标题可跳转 + 管道输出补链接清单） ----------
+
+
+def test_merge_carries_platform_urls():
+    jj = [JuejinPost("1", "甲", "2026-08-20", 100, 1, 0, "https://juejin.cn/post/1", wp_id="wp1")]
+    sf = [
+        SegmentFaultPost(
+            "9", "甲", "2026-08-21", 50, 40, 2, 1, 0, "https://segmentfault.com/a/9"
+        )
+    ]
+    sf[0].wp_id = "wp1"
+    rows = _merge_platform_posts(jj, sf)
+    assert len(rows) == 1
+    assert rows[0]["jj_url"] == "https://juejin.cn/post/1"
+    assert rows[0]["sf_url"] == "https://segmentfault.com/a/9"
+
+
+def test_link_cell_wraps_url_and_escapes_title():
+    from dev_stats.cli import _link_cell
+
+    assert _link_cell("标题", "https://x.cn/1") == "[link=https://x.cn/1]标题[/link]"
+    # 无链接退化为纯文本；标题里形似 markup 的方括号被转义，不会破坏表格渲染
+    assert _link_cell("[bold]标题[/]", "") == "\\[bold]标题\\[/]"
+
+
+def test_print_article_links_only_when_not_terminal():
+    from rich.console import Console
+
+    from dev_stats.cli import print_article_links
+
+    buf = Console(file=open("/dev/null", "w"))
+    assert buf.is_terminal is False
+    print_article_links(buf, [("甲", "https://x.cn/1")])  # 非终端：应打印（不报错即可）
+    print_article_links(buf, [("无链接", "")])  # 全无链接：跳过

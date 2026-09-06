@@ -204,6 +204,35 @@ def _strip_emoji(title: str) -> str:
     return "".join(ch for ch in title if unicodedata.category(ch) not in ("So", "Sk") and ch != "\ufe0f").strip()
 
 
+def _link_cell(title: str, url: str) -> str:
+    """表格里的标题单元格：终端中渲染为可点击超链接（OSC 8），无链接时退化为纯文本。
+
+    标题做 rich 转义，避免标题里的方括号被当成 markup 破坏表格。
+    """
+    from rich.markup import escape
+
+    text = _strip_emoji(title) or UNAVAILABLE
+    if not url:
+        return escape(text)
+    return f"[link={url}]{escape(text)}[/link]"
+
+
+def print_article_links(console: Console, items: list[tuple[str, str]]) -> None:
+    """非终端输出（管道 / Agent 调用）时补一段纯文本链接清单。
+
+    终端里标题本身可点击，不需要这段文字；而管道输出拿不到 OSC 8 序列，
+    打印出来才能让调用方（脚本、AI Agent）拿到可跳转的 URL。
+    """
+    if console.is_terminal or not items:
+        return
+    usable = [(t, u) for t, u in items if u]
+    if not usable:
+        return
+    console.print("[bold]文章链接：[/bold]")
+    for title, url in usable:
+        console.print(f"- {title} — {url}")
+
+
 def _daily_views(view_count: int | None, publish_time: str, today: date | None = None) -> float:
     """日均阅读 = 阅读量 / 距发布天数（至少 1 天）；缺发布时间或阅读时返回 0。
 
@@ -552,7 +581,7 @@ def render_juejin_table(posts: list[JuejinPost], user_id: str, art_repos: dict |
     art_repos = art_repos or {}
     for p in posts:
         table.add_row(
-            _strip_emoji(p.title) or UNAVAILABLE,
+            _link_cell(p.title, p.url),
             p.publish_time or UNAVAILABLE,
             repo_label(art_repos, p.wp_id) or UNAVAILABLE,
             _fmt(p.view_count),
@@ -640,6 +669,7 @@ def run_juejin(argv: list[str]) -> int:
     if args.limit > 0:
         posts = posts[: args.limit]
     console.print(render_juejin_table(posts, user_id, art_repos))
+    print_article_links(console, [(p.title, p.url) for p in posts])
     if args.csv:
         export_juejin_csv(posts, args.csv, art_repos)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
@@ -672,9 +702,20 @@ def _merge_platform_posts(jj_posts, sf_posts):
         key = p.wp_id or ("jj:" + p.post_id)
         e = rows.setdefault(
             key,
-            {"wp_id": p.wp_id, "title": "", "pub": "", "jj_views": 0, "jj_daily": 0.0, "sf_views": 0, "sf_daily": 0.0},
+            {
+                "wp_id": p.wp_id,
+                "title": "",
+                "pub": "",
+                "jj_views": 0,
+                "jj_daily": 0.0,
+                "sf_views": 0,
+                "sf_daily": 0.0,
+                "jj_url": "",
+                "sf_url": "",
+            },
         )
         e["title"] = e["title"] or p.title
+        e["jj_url"] = p.url
         e["jj_views"] = p.view_count or 0
         e["jj_daily"] = _daily_views(p.view_count, p.publish_time)
         if not e["pub"] or (p.publish_time and p.publish_time < e["pub"]):
@@ -683,9 +724,20 @@ def _merge_platform_posts(jj_posts, sf_posts):
         key = p.wp_id or ("sf:" + p.post_id)
         e = rows.setdefault(
             key,
-            {"wp_id": p.wp_id, "title": "", "pub": "", "jj_views": 0, "jj_daily": 0.0, "sf_views": 0, "sf_daily": 0.0},
+            {
+                "wp_id": p.wp_id,
+                "title": "",
+                "pub": "",
+                "jj_views": 0,
+                "jj_daily": 0.0,
+                "sf_views": 0,
+                "sf_daily": 0.0,
+                "jj_url": "",
+                "sf_url": "",
+            },
         )
         e["title"] = e["title"] or p.title
+        e["sf_url"] = p.url
         e["sf_views"] = p.view_count or 0
         e["sf_daily"] = _daily_views(p.view_count, p.publish_time)
         if not e["pub"] or (p.publish_time and p.publish_time < e["pub"]):
@@ -724,7 +776,7 @@ def render_report_table(rows, art_repos=None) -> Table:
     art_repos = art_repos or {}
     for e in rows:
         table.add_row(
-            _strip_emoji(e["title"]) or UNAVAILABLE,
+            _link_cell(e["title"], e.get("jj_url") or e.get("sf_url") or ""),
             e["pub"] or UNAVAILABLE,
             repo_label(art_repos, e["wp_id"]) or UNAVAILABLE,
             _fmt(e["jj_views"]),
@@ -750,6 +802,8 @@ def export_report_csv(rows, path: str, art_repos: dict | None = None) -> None:
         "sf_daily",
         "total_views",
         "total_daily",
+        "jj_url",
+        "sf_url",
         "repos",
     ]
     art_repos = art_repos or {}
@@ -768,6 +822,8 @@ def export_report_csv(rows, path: str, art_repos: dict | None = None) -> None:
                     "sf_daily": f"{e['sf_daily']:.2f}",
                     "total_views": e["total_views"],
                     "total_daily": f"{e['total_daily']:.2f}",
+                    "jj_url": e.get("jj_url", ""),
+                    "sf_url": e.get("sf_url", ""),
                     "repos": repo_label(art_repos, e["wp_id"]),
                 }
             )
@@ -818,6 +874,13 @@ def run_report(argv: list[str]) -> int:
         rows = rows[: args.limit]
     art_repos = build_article_repos(load_repo_articles())
     console.print(render_report_table(rows, art_repos))
+    print_article_links(
+        console,
+        [
+            (e["title"], " | ".join(x for x in (e.get("jj_url"), e.get("sf_url")) if x))
+            for e in rows
+        ],
+    )
     if args.csv:
         export_report_csv(rows, args.csv, art_repos)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
@@ -907,7 +970,7 @@ def render_segmentfault_table(posts, source: str, art_repos: dict | None = None)
     art_repos = art_repos or {}
     for p in posts:
         table.add_row(
-            _strip_emoji(p.title) or UNAVAILABLE,
+            _link_cell(p.title, p.url),
             p.publish_time or UNAVAILABLE,
             repo_label(art_repos, p.wp_id) or UNAVAILABLE,
             _fmt(p.view_count),
@@ -1010,6 +1073,7 @@ def run_segmentfault(argv: list[str]) -> int:
     if args.limit > 0:
         posts = posts[: args.limit]
     console.print(render_segmentfault_table(posts, str(len(ids)), art_repos))
+    print_article_links(console, [(p.title, p.url) for p in posts])
     if args.csv:
         export_segmentfault_csv(posts, args.csv, art_repos)
         console.print(f"[green]已导出 CSV：{args.csv}[/green]")
