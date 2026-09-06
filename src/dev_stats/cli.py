@@ -6,7 +6,7 @@ import argparse
 import csv
 import os
 import sys
-import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 
 from dotenv import load_dotenv
@@ -28,6 +28,20 @@ except ImportError:
     SegmentFaultClient = None
 
 SORT_KEYS = ("stars", "forks", "clones", "views", "updated", "name", "size", "health", "commits")
+
+
+def _run_parallel(fn, items: list, workers: int = 8) -> None:
+    """并行执行逐仓库采集函数（每个 item 一次 fn 调用）。
+
+    GitHub REST 认证限额 5000 次/小时、建议并发 <10；8 并发把
+    600+ 个串行请求的分钟级采集压缩到秒级。fn 内部自行处理单仓错误。
+    """
+    if not items:
+        return
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(fn, items))
+
+
 UNAVAILABLE = "-"
 
 
@@ -189,9 +203,7 @@ def print_ci_summary(console: Console, repos: list) -> None:
     checked = [r for r in repos if r.actions_conclusion is not None or r.actions_status is not None]
 
     console.print(
-        "[bold]CI 巡检小结：[/bold]共检查 {} 个仓库 · [green]通过 {}[/green] · [red]失败 {}[/red] · [cyan]运行中 {}[/cyan]".format(
-            len(checked), len(ok), len(failed), len(running)
-        )
+        f"[bold]CI 巡检小结：[/bold]共检查 {len(checked)} 个仓库 · [green]通过 {len(ok)}[/green] · [red]失败 {len(failed)}[/red] · [cyan]运行中 {len(running)}[/cyan]"
     )
     if not failed:
         console.print("[green]没有失败的仓库。[/green]")
@@ -457,54 +469,59 @@ def export_csv(repos: list[RepoStats], path: str, include_traffic: bool = False)
         "top_referrers",
     ]
     fields = base_fields + (traffic_fields if include_traffic else [])
+    rows = []
+    for r in repos:
+        row = {
+            "name": r.name,
+            "full_name": r.full_name,
+            "private": r.private,
+            "fork": r.fork,
+            "stars": r.stars,
+            "forks": r.forks,
+            "open_issues": r.open_issues,
+            "size_kb": r.size_kb,
+            "license": r.license,
+            "archived": r.archived,
+            "topics": ";".join(r.topics),
+            "default_branch": r.default_branch,
+            "created_at": r.created_at,
+            "homepage": r.homepage,
+            "subscribers": r.subscribers,
+            "community_health": r.community_health,
+            "has_readme": r.community_files.get("readme"),
+            "has_contributing": r.community_files.get("contributing"),
+            "has_license": r.community_files.get("license"),
+            "has_code_of_conduct": r.community_files.get("code_of_conduct"),
+            "commits_4w": r.commits_4w,
+            "latest_release": r.latest_release,
+            "actions_workflow": r.actions_workflow,
+            "actions_status": r.actions_status,
+            "actions_conclusion": r.actions_conclusion,
+            "actions_at": r.actions_at,
+            "actions_failed_jobs": r.actions_failed_jobs,
+            "actions_errors": r.actions_errors,
+            "pushed_at": r.updated_at,
+            "language": r.language,
+        }
+        if include_traffic:
+            row.update(
+                {
+                    "clones_total_14d": r.clones_total,
+                    "cloners_14d": r.clones_uniques,
+                    "views_total_14d": r.views_total,
+                    "viewers_14d": r.views_uniques,
+                    "top_paths": r.top_paths,
+                    "top_referrers": r.top_referrers,
+                }
+            )
+        rows.append({k: row.get(k, "") for k in fields})
+    # 未采集的可选指标（--detail/--community/--activity/--actions 未开）整列为空，
+    # 直接从 CSV 里丢掉，避免出现一排无意义的空白列。
+    kept = [c for c in fields if any(str(row.get(c) or "").strip() for row in rows)]
     with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fields)
+        writer = csv.DictWriter(f, fieldnames=kept, extrasaction="ignore")
         writer.writeheader()
-        for r in repos:
-            row = {
-                "name": r.name,
-                "full_name": r.full_name,
-                "private": r.private,
-                "fork": r.fork,
-                "stars": r.stars,
-                "forks": r.forks,
-                "open_issues": r.open_issues,
-                "size_kb": r.size_kb,
-                "license": r.license,
-                "archived": r.archived,
-                "topics": ";".join(r.topics),
-                "default_branch": r.default_branch,
-                "created_at": r.created_at,
-                "homepage": r.homepage,
-                "subscribers": r.subscribers,
-                "community_health": r.community_health,
-                "has_readme": r.community_files.get("readme"),
-                "has_contributing": r.community_files.get("contributing"),
-                "has_license": r.community_files.get("license"),
-                "has_code_of_conduct": r.community_files.get("code_of_conduct"),
-                "commits_4w": r.commits_4w,
-                "latest_release": r.latest_release,
-                "actions_workflow": r.actions_workflow,
-                "actions_status": r.actions_status,
-                "actions_conclusion": r.actions_conclusion,
-                "actions_at": r.actions_at,
-                "actions_failed_jobs": r.actions_failed_jobs,
-                "actions_errors": r.actions_errors,
-                "pushed_at": r.updated_at,
-                "language": r.language,
-            }
-            if include_traffic:
-                row.update(
-                    {
-                        "clones_total_14d": r.clones_total,
-                        "cloners_14d": r.clones_uniques,
-                        "views_total_14d": r.views_total,
-                        "viewers_14d": r.views_uniques,
-                        "top_paths": r.top_paths,
-                        "top_referrers": r.top_referrers,
-                    }
-                )
-            writer.writerow({k: row.get(k, "") for k in fields})
+        writer.writerows(rows)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -564,17 +581,17 @@ def main(argv: list[str] | None = None) -> int:
         fetch_traffic = client.fetch_traffic_full if args.traffic_full else client.fetch_traffic
         show_traffic_full = args.traffic_full
         cutoff = date.today() - timedelta(days=args.traffic_since_days)
-        traffic_count = 0
+        candidates = []
+        for r in repos:
+            try:
+                r_date = date.fromisoformat(str(r.updated_at)[:10])
+            except (ValueError, TypeError):
+                r_date = date.min
+            if r_date >= cutoff:
+                candidates.append(r)
         with console.status(f"采集 clone/views 流量数据（仅 {args.traffic_since_days} 天内有更新的仓库）…"):
-            for r in repos:
-                try:
-                    r_date = date.fromisoformat(str(r.updated_at)[:10])
-                except (ValueError, TypeError):
-                    r_date = date.min
-                if r_date >= cutoff:
-                    fetch_traffic(r)
-                    traffic_count += 1
-                    time.sleep(0.05)
+            _run_parallel(fetch_traffic, candidates)
+        traffic_count = len(candidates)
         console.print(
             f"[dim]traffic 采集：{traffic_count}/{len(repos)} 个仓库（{args.traffic_since_days} 天内有更新）[/dim]"
         )
@@ -589,23 +606,22 @@ def main(argv: list[str] | None = None) -> int:
     # 可选指标层：详情 / 社区健康 / 活跃度（均为公开数据，按 flag 逐仓库请求）
     if args.detail:
         with console.status("采集仓库详情…"):
-            for r in repos:
-                client.fetch_repo_detail(r)
+            _run_parallel(client.fetch_repo_detail, repos)
     if args.community:
         with console.status("采集社区健康度…"):
-            for r in repos:
-                client.fetch_community(r)
+            _run_parallel(client.fetch_community, repos)
     if args.activity:
         since = (datetime.now(UTC) - timedelta(days=28)).isoformat()
+
+        def _activity(r):
+            client.fetch_commit_count(r, since)
+            client.fetch_latest_release(r)
+
         with console.status("采集近 4 周提交数与 release…"):
-            for r in repos:
-                client.fetch_commit_count(r, since)
-                client.fetch_latest_release(r)
+            _run_parallel(_activity, repos)
     if args.actions or ci_only:
         with console.status("采集最新 GitHub Actions 运行状态…"):
-            for r in repos:
-                client.fetch_latest_action(r)
-                time.sleep(0.05)
+            _run_parallel(client.fetch_latest_action, repos)
 
     # --ci-only：仓库大表在窄终端/管道里会把 CI 列挤没，这里直接跳过，只给小结
     if ci_only:
