@@ -51,6 +51,11 @@ report: ## 汇总掘金 + 思否，按母文章合并对比（默认 --sort dail
 actions: ## 巡检各仓库 CI 状态（--actions，默认排除 fork 与老仓 CI 噪音，按最近推送排序，可 ARGS 覆盖）
 	uv run dev-stats --actions --no-forks --sort updated --exclude wildsKick,king-power,skeleton-ssr $(if $(ARGS),$(ARGS))
 
+# 只巡检 CI：跳过流量采集与 97 行仓库大表，仅输出「CI 巡检小结」。
+# 表格在窄终端/管道里会把 CI 列挤成 "-"，Agent 调用请用这个目标。
+ci: ## 只输出 CI 巡检小结（跳过流量采集与仓库大表，输出短、速度快，适合 Agent/管道）
+	uv run dev-stats --ci-only --no-forks --sort updated --exclude wildsKick,king-power,skeleton-ssr $(if $(ARGS),$(ARGS))
+
 # 遵守"不永久删除"约定：缓存与构建产物一律移进废纸篓（可恢复），不用 rm -rf
 clean: ## 将测试/格式缓存与构建产物移入废纸篓
 	@for d in .pytest_cache .ruff_cache dist build; do \

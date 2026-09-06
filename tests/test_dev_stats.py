@@ -452,3 +452,48 @@ def test_export_csv_actions_columns(tmp_path, sample_repos):
     assert first["actions_workflow"] == "CI"
     assert first["actions_conclusion"] == "failure"
     assert first["actions_at"] == "2026-09-03"
+
+
+# ---------- CI 巡检小结（管道/窄终端场景的纯文本兜底） ----------
+
+
+def _ci_repo(name, conclusion, status=None, workflow="CI", at="2026-09-05", jobs=None, errors=None):
+    r = make_repo(name)
+    r.actions_conclusion = conclusion
+    r.actions_status = status
+    r.actions_workflow = workflow
+    r.actions_at = at
+    r.actions_failed_jobs = jobs
+    r.actions_errors = errors
+    return r
+
+
+def test_ci_summary_lists_failed_repo_with_steps():
+    from rich.console import Console
+
+    from dev_stats.cli import print_ci_summary
+
+    repos = [
+        _ci_repo("ok-repo", "success"),
+        _ci_repo("bad-repo", "failure", jobs="Lint + Format: Prettier check", errors="Process completed with exit code 1."),
+        _ci_repo("no-ci", None),
+    ]
+    buf = Console(record=True, width=120)
+    print_ci_summary(buf, repos)
+    out = buf.export_text()
+    assert "失败 1" in out
+    assert "通过 1" in out
+    assert "bad-repo" in out
+    assert "Prettier check" in out  # 失败步骤
+    assert "exit code 1" in out  # 报错注解
+    assert "ok-repo" not in out  # 成功的仓库不逐条列出
+
+
+def test_ci_summary_no_failures_says_so():
+    from rich.console import Console
+
+    from dev_stats.cli import print_ci_summary
+
+    buf = Console(record=True, width=120)
+    print_ci_summary(buf, [_ci_repo("ok", "success")])
+    assert "没有失败" in buf.export_text()

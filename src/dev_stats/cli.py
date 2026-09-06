@@ -64,6 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--actions", action="store_true", help="拉取最新一次 GitHub Actions 运行状态（成功/失败/运行中，每仓库 1 请求）"
     )
     parser.add_argument(
+        "--ci-only",
+        action="store_true",
+        help="只做 CI 巡检：跳过流量采集与仓库大表，仅输出 CI 巡检小结（输出短、速度快，适合 Agent/管道调用）",
+    )
+    parser.add_argument(
         "--no-user-info", action="store_true", help="不显示账号信息行（followers/关注/仓库数/注册年份）"
     )
     parser.add_argument(
@@ -165,6 +170,37 @@ def render_table(
         summary.append(f"14 天 Clone 合计 {total_clones}")
     table.caption = "  |  ".join(summary)
     return table
+
+
+def print_ci_summary(console: Console, repos: list) -> None:
+    """CI 巡检小结：纯文本列出失败仓库、workflow、失败步骤与报错注解。
+
+    仓库表里「CI / CI 失败详情」两列在窄终端或管道输出里会被挤成 `-`，
+    而 Agent / 脚本正是靠管道读结果——所以这里额外给一段不依赖表格宽度的文字。
+    """
+    failed = [r for r in repos if r.actions_conclusion in ("failure", "timed_out", "startup_failure")]
+    running = [r for r in repos if r.actions_status in ("in_progress", "queued", "waiting", "pending")]
+    ok = [r for r in repos if r.actions_conclusion == "success"]
+    checked = [r for r in repos if r.actions_conclusion is not None or r.actions_status is not None]
+
+    console.print(
+        "[bold]CI 巡检小结：[/bold]共检查 {} 个仓库 · [green]通过 {}[/green] · [red]失败 {}[/red] · [cyan]运行中 {}[/cyan]".format(
+            len(checked), len(ok), len(failed), len(running)
+        )
+    )
+    if not failed:
+        console.print("[green]没有失败的仓库。[/green]")
+        return
+    for r in failed:
+        head = f"- [red]{r.name}[/red]（{r.actions_conclusion}，{r.actions_workflow or UNAVAILABLE}"
+        if r.actions_at:
+            head += f"，{r.actions_at}"
+        head += "）"
+        console.print(head)
+        if r.actions_failed_jobs:
+            console.print(f"    失败步骤：{r.actions_failed_jobs}")
+        if r.actions_errors:
+            console.print(f"    报错：{r.actions_errors}")
 
 
 def _fmt_size(size_kb: int | None) -> str:
@@ -395,7 +431,9 @@ def main(argv: list[str] | None = None) -> int:
     # 流量数据仅仓库管理员可见：认证用户 == 查询用户 时才采集
     show_traffic = False
     show_traffic_full = False
-    if not args.no_traffic and client.authenticated and me and me.lower() == user.lower():
+    # --ci-only 只关心 CI：跳过流量采集（最耗时）与仓库大表，输出短、速度快
+    ci_only = getattr(args, "ci_only", False)
+    if not args.no_traffic and not ci_only and client.authenticated and me and me.lower() == user.lower():
         show_traffic = True
         fetch_traffic = client.fetch_traffic_full if args.traffic_full else client.fetch_traffic
         show_traffic_full = args.traffic_full
@@ -437,11 +475,16 @@ def main(argv: list[str] | None = None) -> int:
             for r in repos:
                 client.fetch_commit_count(r, since)
                 client.fetch_latest_release(r)
-    if args.actions:
+    if args.actions or ci_only:
         with console.status("采集最新 GitHub Actions 运行状态…"):
             for r in repos:
                 client.fetch_latest_action(r)
                 time.sleep(0.05)
+
+    # --ci-only：仓库大表在窄终端/管道里会把 CI 列挤没，这里直接跳过，只给小结
+    if ci_only:
+        print_ci_summary(console, repos)
+        return 0
 
     console.print(
         render_table(
@@ -455,6 +498,8 @@ def main(argv: list[str] | None = None) -> int:
             show_actions=args.actions,
         )
     )
+    if args.actions:
+        print_ci_summary(console, repos)
 
     if not args.no_user_info:
         info = client.fetch_user_info(user)
