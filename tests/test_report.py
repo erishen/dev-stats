@@ -127,11 +127,7 @@ def test_run_report_degrades_when_sf_fetch_fails(monkeypatch, capsys):
 
 def test_merge_carries_platform_urls():
     jj = [JuejinPost("1", "甲", "2026-08-20", 100, 1, 0, "https://juejin.cn/post/1", wp_id="wp1")]
-    sf = [
-        SegmentFaultPost(
-            "9", "甲", "2026-08-21", 50, 40, 2, 1, 0, "https://segmentfault.com/a/9"
-        )
-    ]
+    sf = [SegmentFaultPost("9", "甲", "2026-08-21", 50, 40, 2, 1, 0, "https://segmentfault.com/a/9")]
     sf[0].wp_id = "wp1"
     rows = _merge_platform_posts(jj, sf)
     assert len(rows) == 1
@@ -148,11 +144,11 @@ def test_link_cell_wraps_url_and_escapes_title():
 
 
 def test_print_article_links_only_when_not_terminal():
+    from dev_stats.cli import print_article_links
     from rich.console import Console
 
-    from dev_stats.cli import print_article_links
-
-    buf = Console(file=open("/dev/null", "w"))
-    assert buf.is_terminal is False
-    print_article_links(buf, [("甲", "https://x.cn/1")])  # 非终端：应打印（不报错即可）
-    print_article_links(buf, [("无链接", "")])  # 全无链接：跳过
+    with open("/dev/null", "w") as devnull:
+        buf = Console(file=devnull)
+        assert buf.is_terminal is False
+        print_article_links(buf, [("甲", "https://x.cn/1")])  # 非终端：应打印（不报错即可）
+        print_article_links(buf, [("无链接", "")])  # 全无链接：跳过

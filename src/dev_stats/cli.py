@@ -30,16 +30,36 @@ except ImportError:
 SORT_KEYS = ("stars", "forks", "clones", "views", "updated", "name", "size", "health", "commits")
 
 
-def _run_parallel(fn, items: list, workers: int = 8) -> None:
-    """并行执行逐仓库采集函数（每个 item 一次 fn 调用）。
+def _run_parallel(fn, items: list, workers: int = 8, label: str = "采集") -> list[str]:
+    """并行执行逐仓库采集函数（每个 item 一次 fn 调用），返回失败摘要列表。
 
     GitHub REST 认证限额 5000 次/小时、建议并发 <10；8 并发把
-    600+ 个串行请求的分钟级采集压缩到秒级。fn 内部自行处理单仓错误。
+    600+ 个串行请求的分钟级采集压缩到秒级。
+
+    单个仓库的异常不会中断整轮采集：8 并发 + 代理出网时 TLS 偶发被重置，
+    一个仓库的网络抖动不该让已经跑了几十秒的全量报表直接崩掉。失败的仓库
+    以告警形式列出，对应列显示为 "-"（区别于真实的 0 / 失败状态）。
     """
     if not items:
-        return
+        return []
+    failures: list[str] = []
+
+    def _safe(item):
+        try:
+            fn(item)
+        except Exception as exc:  # 故意兜住全部异常：单仓失败降级为 "-"，不熔断整轮采集
+            name = getattr(item, "full_name", None) or str(item)
+            failures.append(f"{name}: {type(exc).__name__}: {str(exc)[:80]}")
+
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        list(pool.map(fn, items))
+        list(pool.map(_safe, items))
+
+    if failures:
+        console = Console(stderr=True)
+        console.print(f'[yellow]⚠ {label}：{len(failures)}/{len(items)} 个仓库采集失败（已降级为 "-"）[/yellow]')
+        for line in failures[:5]:
+            console.print(f"[dim]  - {line}[/dim]")
+    return failures
 
 
 UNAVAILABLE = "-"
@@ -590,7 +610,7 @@ def main(argv: list[str] | None = None) -> int:
             if r_date >= cutoff:
                 candidates.append(r)
         with console.status(f"采集 clone/views 流量数据（仅 {args.traffic_since_days} 天内有更新的仓库）…"):
-            _run_parallel(fetch_traffic, candidates)
+            _run_parallel(fetch_traffic, candidates, label="流量")
         traffic_count = len(candidates)
         console.print(
             f"[dim]traffic 采集：{traffic_count}/{len(repos)} 个仓库（{args.traffic_since_days} 天内有更新）[/dim]"
@@ -606,10 +626,10 @@ def main(argv: list[str] | None = None) -> int:
     # 可选指标层：详情 / 社区健康 / 活跃度（均为公开数据，按 flag 逐仓库请求）
     if args.detail:
         with console.status("采集仓库详情…"):
-            _run_parallel(client.fetch_repo_detail, repos)
+            _run_parallel(client.fetch_repo_detail, repos, label="仓库详情")
     if args.community:
         with console.status("采集社区健康度…"):
-            _run_parallel(client.fetch_community, repos)
+            _run_parallel(client.fetch_community, repos, label="社区健康度")
     if args.activity:
         since = (datetime.now(UTC) - timedelta(days=28)).isoformat()
 
@@ -618,10 +638,10 @@ def main(argv: list[str] | None = None) -> int:
             client.fetch_latest_release(r)
 
         with console.status("采集近 4 周提交数与 release…"):
-            _run_parallel(_activity, repos)
+            _run_parallel(_activity, repos, label="活跃度")
     if args.actions or ci_only:
         with console.status("采集最新 GitHub Actions 运行状态…"):
-            _run_parallel(client.fetch_latest_action, repos)
+            _run_parallel(client.fetch_latest_action, repos, label="CI 状态")
 
     # --ci-only：仓库大表在窄终端/管道里会把 CI 列挤没，这里直接跳过，只给小结
     if ci_only:

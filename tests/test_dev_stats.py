@@ -469,13 +469,14 @@ def _ci_repo(name, conclusion, status=None, workflow="CI", at="2026-09-05", jobs
 
 
 def test_ci_summary_lists_failed_repo_with_steps():
-    from rich.console import Console
-
     from dev_stats.cli import print_ci_summary
+    from rich.console import Console
 
     repos = [
         _ci_repo("ok-repo", "success"),
-        _ci_repo("bad-repo", "failure", jobs="Lint + Format: Prettier check", errors="Process completed with exit code 1."),
+        _ci_repo(
+            "bad-repo", "failure", jobs="Lint + Format: Prettier check", errors="Process completed with exit code 1."
+        ),
         _ci_repo("no-ci", None),
     ]
     buf = Console(record=True, width=120)
@@ -490,10 +491,45 @@ def test_ci_summary_lists_failed_repo_with_steps():
 
 
 def test_ci_summary_no_failures_says_so():
-    from rich.console import Console
-
     from dev_stats.cli import print_ci_summary
+    from rich.console import Console
 
     buf = Console(record=True, width=120)
     print_ci_summary(buf, [_ci_repo("ok", "success")])
     assert "没有失败" in buf.export_text()
+
+
+def test_client_session_retries_transport_errors():
+    """代理出网偶发 TLS 重置：session 必须挂载带退避的重试策略。"""
+    client = GitHubClient(token=None)
+    adapter = client.session.get_adapter("https://api.github.com")
+    retry = adapter.max_retries
+    assert retry.total >= 3
+    assert retry.connect >= 3 and retry.read >= 3
+    assert retry.backoff_factor > 0  # 否则重试会瞬间打满，反而更容易被代理拒
+    assert 429 in retry.status_forcelist and 503 in retry.status_forcelist
+
+
+def test_run_parallel_isolates_per_repo_failures():
+    """单仓异常只降级该仓，不熔断整轮采集（整轮崩掉 = 几十秒白跑）。"""
+    from dev_stats.cli import _run_parallel
+
+    seen = []
+
+    def fn(item):
+        if item.startswith("bad"):
+            raise ConnectionError("TLS handshake reset")
+        seen.append(item)
+
+    failures = _run_parallel(fn, ["good-1", "bad-1", "good-2", "bad-2"], label="测试")
+
+    assert sorted(seen) == ["good-1", "good-2"]  # 正常的照常采到
+    assert len(failures) == 2
+    assert all("bad-" in f and "ConnectionError" in f for f in failures)
+
+
+def test_run_parallel_empty_and_all_ok_return_no_failures():
+    from dev_stats.cli import _run_parallel
+
+    assert _run_parallel(lambda x: None, []) == []
+    assert _run_parallel(lambda x: None, ["a", "b"]) == []

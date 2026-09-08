@@ -9,9 +9,27 @@ from dataclasses import dataclass, field
 from urllib.parse import parse_qs, urlparse
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 API_ROOT = "https://api.github.com"
 TIMEOUT = 15
+
+# 本机常驻 HTTP(S)_PROXY=127.0.0.1:7897 出网，代理偶发在建连阶段重置 TLS
+# （ssl.SSLEOFError: UNEXPECTED_EOF_WHILE_READING，直连不复现），8 并发采集会放大
+# 命中率。requests 默认 max_retries=0，一次抖动就会让整轮采集抛异常中断，
+# 所以这里在传输层统一退避重试：连接/读取类错误与 429/5xx 各最多 3 次。
+RETRY = Retry(
+    total=3,
+    connect=3,
+    read=3,
+    status=3,
+    backoff_factor=0.8,
+    status_forcelist=(429, 500, 502, 503, 504),
+    allowed_methods=frozenset(["GET"]),
+    raise_on_status=False,
+    respect_retry_after_header=True,
+)
 
 
 def detect_token() -> str | None:
@@ -146,6 +164,10 @@ class GitHubClient:
 
     def __init__(self, token: str | None = ..., per_page: int = 100):
         self.session = requests.Session()
+        # 池容量对齐默认 8 并发（含重试后的突发），避免 "connection pool is full" 告警
+        adapter = HTTPAdapter(max_retries=RETRY, pool_connections=16, pool_maxsize=16)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
         headers = {
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
